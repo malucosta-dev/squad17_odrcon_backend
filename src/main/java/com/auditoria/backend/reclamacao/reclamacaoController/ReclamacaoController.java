@@ -1,5 +1,6 @@
 package com.auditoria.backend.reclamacao.reclamacaoController;
 
+import com.auditoria.backend.reclamacao.reclamacaoService.DuplicidadeService;//Conecta com o detector de duplicata
 import com.auditoria.backend.reclamacao.reclamacaoDTO.ReclamacaoDTO;
 import com.auditoria.backend.reclamacao.reclamacaoDTO.ReclamacaoFormDTO;
 import com.auditoria.backend.usuario.usuarioDTO.UsuarioDTO;
@@ -15,8 +16,18 @@ import java.time.LocalDateTime;
 @CrossOrigin(origins = "http://localhost:5173")
 public class ReclamacaoController {
 
+//Guarda o service no controller
+private final DuplicidadeService duplicidadeService;
+
+public ReclamacaoController(DuplicidadeService duplicidadeService) {
+    this.duplicidadeService = duplicidadeService;
+}
+
     @PostMapping
     public ResponseEntity<ReclamacaoDTO> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO dados) {
+
+        duplicidadeService.validarERegistrar(dados.reclamacao());//Barra reclamacao repetida (devolve 409)
+
         // Testando se o arquivo chegou de verdade
         if (dados.arquivo() != null && !dados.arquivo().isEmpty()) {
             System.out.println("ARQUIVO RECEBIDO COM SUCESSO!");

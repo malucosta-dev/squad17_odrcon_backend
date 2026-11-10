@@ -10,3 +10,14 @@ target/
 
 # macOS
 .DS_Store
+
+# Logs locais
+*.log
+
+# Configurações locais do VS Code
+.vscode/
+
+# Variáveis de ambiente
+.env
+.env.*
+!.env.example
