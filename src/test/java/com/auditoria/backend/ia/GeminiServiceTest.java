@@ -22,6 +22,63 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class GeminiServiceTest {
 
+    private GeminiService criarServicoComResposta(String json, HttpStatus status) {
+        ClientHttpRequestFactory fabricaRequisicoes = (uri, metodo) ->
+                new MockClientHttpRequest(metodo, uri) {
+                    @Override
+                    protected org.springframework.http.client.ClientHttpResponse executeInternal() {
+                        MockClientHttpResponse resposta = new MockClientHttpResponse(
+                                json.getBytes(StandardCharsets.UTF_8), status);
+                        resposta.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+                        return resposta;
+                    }
+                };
+        return new GeminiService(RestClient.builder()
+                .baseUrl("https://generativelanguage.googleapis.com/v1beta/models")
+                .requestFactory(fabricaRequisicoes).build(), "chave-simulada", "gemini-3.5-flash");
+    }
+
+    @Test
+    void deveConcatenarPartesSemExporPensamento() {
+        GeminiService servico = criarServicoComResposta("""
+                {"candidates":[{"finishReason":"STOP","content":{"parts":[
+                  {"text":"Raciocinio interno", "thought":true},
+                  {"text":"Solicito "}, {"text":"a troca.", "thought":false}
+                ]}}]}
+                """, HttpStatus.OK);
+        assertEquals("Solicito a troca.", servico.reformularReclamacao("Quero trocar", null));
+    }
+
+    @Test
+    void deveRejeitarRespostasInterrompidasOuBloqueadas() {
+        for (String motivo : new String[]{"MAX_TOKENS", "SAFETY", "RECITATION"}) {
+            GeminiService servico = criarServicoComResposta("""
+                    {"candidates":[{"finishReason":"%s","content":{"parts":[
+                      {"text":"Texto incompleto"}
+                    ]}}]}
+                    """.formatted(motivo), HttpStatus.OK);
+            assertEquals(HttpStatus.BAD_GATEWAY, assertThrows(IaIntegracaoException.class,
+                    () -> servico.reformularReclamacao("Texto original", null)).getStatus());
+        }
+    }
+
+    @Test
+    void deveTratarLimiteDeQuotaSemExporRespostaExterna() {
+        GeminiService servico = criarServicoComResposta("{\"error\":\"detalhe privado\"}",
+                HttpStatus.TOO_MANY_REQUESTS);
+        IaIntegracaoException ex = assertThrows(IaIntegracaoException.class,
+                () -> servico.reformularReclamacao("Texto original", null));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
+        assertFalse(ex.getMessage().contains("detalhe privado"));
+    }
+
+    @Test
+    void deveTratarJsonInvalidoComoErroDeIntegracao() {
+        GeminiService servico = criarServicoComResposta("{invalido", HttpStatus.OK);
+        assertEquals(HttpStatus.BAD_GATEWAY, assertThrows(IaIntegracaoException.class,
+                () -> servico.reformularReclamacao("Texto original", null)).getStatus());
+    }
+
     @Test
     void deveReformularReclamacaoComSucessoEnviandoPayloadCorreto() {
         AtomicReference<URI> uriCapturada = new AtomicReference<>();

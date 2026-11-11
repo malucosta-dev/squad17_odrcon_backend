@@ -191,15 +191,24 @@ public class GeminiService {
         }
 
         for (Candidate candidate : response.candidates()) {
+            // Nunca devolve uma resposta interrompida como se estivesse completa.
+            if (candidate != null && candidate.finishReason() != null
+                    && !"STOP".equals(candidate.finishReason())) {
+                continue;
+            }
             if (candidate != null
                     && candidate.content() != null
                     && candidate.content().parts() != null) {
+                StringBuilder texto = new StringBuilder();
                 for (Part part : candidate.content().parts()) {
                     if (part != null
-                            && part.text() != null
-                            && !part.text().isBlank()) {
-                        return part.text();
+                            && !Boolean.TRUE.equals(part.thought())
+                            && part.text() != null) {
+                        texto.append(part.text());
                     }
+                }
+                if (!texto.toString().isBlank()) {
+                    return texto.toString();
                 }
             }
         }
@@ -226,9 +235,9 @@ public class GeminiService {
 
     record GeminiApiResponse(List<Candidate> candidates) {}
 
-    record Candidate(Content content) {}
+    record Candidate(Content content, String finishReason) {}
 
     record Content(List<Part> parts) {}
 
-    record Part(String text) {}
+    record Part(String text, Boolean thought) {}
 }
