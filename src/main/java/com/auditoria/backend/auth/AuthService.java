@@ -1,4 +1,3 @@
-
 package com.auditoria.backend.auth;
 
 import org.springframework.security.crypto.password.PasswordEncoder;

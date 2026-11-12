@@ -25,35 +25,35 @@ public class SecurityConfig {
     ) throws Exception {
 
         http
-            // Armazena a autenticação na sessão HTTP
-            .securityContext(context ->
-                context.securityContextRepository(repository)
-            )
+                // Armazena a autenticação na sessão HTTP
+                .securityContext(context ->
+                        context.securityContextRepository(repository)
+                )
 
-            // Define as permissões das rotas
-            .authorizeHttpRequests(auth -> auth
+                // Define as permissões das rotas
+                .authorizeHttpRequests(auth -> auth
 
-                // Permite o tratamento interno de erros
-                .dispatcherTypeMatchers(
-                    DispatcherType.ERROR
-                ).permitAll()
+                        // Permite o tratamento interno de erros
+                        .dispatcherTypeMatchers(
+                                DispatcherType.ERROR
+                        ).permitAll()
 
-                // Rotas públicas de autenticação
-                .requestMatchers(
-                    "/api/auth/login",
-                    "/api/auth/csrf"
-                ).permitAll()
+                        // Rotas públicas de autenticação
+                        .requestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/csrf"
+                        ).permitAll()
 
-                // As demais rotas exigem autenticação
-                .anyRequest().authenticated()
-            )
+                        // As demais rotas exigem autenticação
+                        .anyRequest().authenticated()
+                )
 
-            // Mantém a proteção CSRF habilitada
-            .csrf(csrf -> {})
+                // Mantém a proteção CSRF habilitada
+                .csrf(csrf -> {})
 
-            // Desativa os métodos de login padrão
-            .formLogin(form -> form.disable())
-            .httpBasic(basic -> basic.disable());
+                // Desativa os métodos de login padrão
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable());
 
         return http.build();
     }
