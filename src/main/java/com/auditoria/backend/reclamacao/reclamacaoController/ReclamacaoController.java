@@ -25,6 +25,7 @@ public ReclamacaoController(DuplicidadeService duplicidadeService) {
 
     @PostMapping
     public ResponseEntity<ReclamacaoDTO> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO dados) {
+        System.out.println("CHEGUEI");
 
         duplicidadeService.validarERegistrar(dados.reclamacao());//Barra reclamacao repetida (devolve 409)
 
