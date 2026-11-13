@@ -7,12 +7,10 @@ import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -33,12 +31,8 @@ public class SecurityConfig {
 
         boolean desenvolvimento = environment.matchesProfiles("dev");
 
-        RequestMatcher envioReclamacao = request ->
-                "POST".equals(request.getMethod())
-                && "/api/reclamacao".equals(request.getServletPath());
-
         http
-            // Armazena a autenticação na sessão HTTP
+            // Permite manter uma sessão quando o usuário fizer login.
             .securityContext(context ->
                 context.securityContextRepository(repository)
             )
@@ -53,21 +47,19 @@ public class SecurityConfig {
                     "/api/auth/csrf"
                 ).permitAll();
 
-                // Liberação temporária somente no ambiente de desenvolvimento
                 if (desenvolvimento) {
-                    auth.requestMatchers(
-                        HttpMethod.POST,
-                        "/api/reclamacao"
-                    ).permitAll();
+                    // Libera os endpoints para os testes do grupo.
+                    auth.anyRequest().permitAll();
+                } else {
+                    auth.anyRequest().authenticated();
                 }
-
-                auth.anyRequest().authenticated();
             })
 
             .csrf(csrf -> {
-                // Dispensa o token somente nesse POST e no perfil dev
                 if (desenvolvimento) {
-                    csrf.ignoringRequestMatchers(envioReclamacao);
+                    // Dispensa a validação em dev, mas mantém a geração
+                    // do token para compatibilidade com a tela de login.
+                    csrf.ignoringRequestMatchers(request -> true);
                 }
             })
 
@@ -84,7 +76,11 @@ public class SecurityConfig {
 
             cors.setAllowedMethods(List.of(
                 "GET",
+                "HEAD",
                 "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
                 "OPTIONS"
             ));
 
