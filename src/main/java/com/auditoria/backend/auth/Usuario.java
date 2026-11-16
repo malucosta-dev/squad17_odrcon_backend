@@ -1,4 +1,3 @@
-
 package com.auditoria.backend.auth;
 
 import jakarta.persistence.*;
@@ -18,20 +17,39 @@ public class Usuario {
     @Column(name = "id_unidade")
     private Integer idUnidade;
 
-    @Column(name = "nome_usuario", nullable = false)
+    @Column(name = "nome_usuario", nullable = false, length = 150)
     private String nomeUsuario;
 
-    @Column(name = "email_usuario", nullable = false)
+    @Column(name = "email_usuario", nullable = false, length = 255)
     private String emailUsuario;
 
-    @Column(name = "senha_hash_usuario")
+    @Column(name = "senha_hash_usuario", length = 255)
     private String senhaHashUsuario;
 
-    @Column(name = "perfil_usuario")
+    @Column(name = "perfil_usuario", length = 50)
     private String perfilUsuario;
 
-    @Column(name = "is_ativo_usuario")
+    @Column(name = "is_ativo_usuario", nullable = false)
     private Boolean ativo;
+
+    // Necessário para o JPA carregar os usuários do banco.
+    protected Usuario() {
+    }
+
+    // Utilizado pelo cadastro público de clientes.
+    public Usuario(
+            Integer idEmpresa,
+            String nomeUsuario,
+            String emailUsuario,
+            String senhaHashUsuario
+    ) {
+        this.idEmpresa = idEmpresa;
+        this.nomeUsuario = nomeUsuario;
+        this.emailUsuario = emailUsuario;
+        this.senhaHashUsuario = senhaHashUsuario;
+        this.perfilUsuario = "CLIENTE";
+        this.ativo = true;
+    }
 
     public Integer getIdUsuario() {
         return idUsuario;

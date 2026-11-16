@@ -8,11 +8,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -33,12 +34,7 @@ public class SecurityConfig {
 
         boolean desenvolvimento = environment.matchesProfiles("dev");
 
-        RequestMatcher envioReclamacao = request ->
-                "POST".equals(request.getMethod())
-                && "/api/reclamacao".equals(request.getServletPath());
-
         http
-            // Armazena a autenticação na sessão HTTP
             .securityContext(context ->
                 context.securityContextRepository(repository)
             )
@@ -49,27 +45,62 @@ public class SecurityConfig {
                 ).permitAll();
 
                 auth.requestMatchers(
+                    HttpMethod.POST,
                     "/api/auth/login",
-                    "/api/auth/csrf"
+                    "/api/auth/registro"
                 ).permitAll();
 
-                // Liberação temporária somente no ambiente de desenvolvimento
-                if (desenvolvimento) {
-                    auth.requestMatchers(
-                        HttpMethod.POST,
-                        "/api/reclamacao"
-                    ).permitAll();
-                }
+                auth.requestMatchers(
+                    HttpMethod.GET,
+                    "/api/auth/csrf",
+                    "/api/empresas/publicas"
+                ).permitAll();
 
-                auth.anyRequest().authenticated();
+                // Continua exigindo sessão, inclusive em dev.
+                auth.requestMatchers(
+                    HttpMethod.GET,
+                    "/api/auth/me"
+                ).authenticated();
+
+                if (desenvolvimento) {
+                    // Liberação temporária para testes locais.
+                    auth.anyRequest().permitAll();
+                } else {
+                    auth.anyRequest().hasAnyRole(
+                        "ADMIN",
+                        "RESPONSAVEL",
+                        "COLABORADOR"
+                    );
+                }
             })
 
             .csrf(csrf -> {
-                // Dispensa o token somente nesse POST e no perfil dev
                 if (desenvolvimento) {
-                    csrf.ignoringRequestMatchers(envioReclamacao);
+                    // Mantém a geração do token, mas dispensa
+                    // sua validação durante os testes em dev.
+                    csrf.ignoringRequestMatchers(request -> true);
                 }
             })
+
+            .exceptionHandling(exceptions ->
+                exceptions.authenticationEntryPoint(
+                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)
+                )
+            )
+
+            .logout(logout -> logout
+                .logoutUrl("/api/auth/logout")
+                .invalidateHttpSession(true)
+                .clearAuthentication(true)
+                .deleteCookies("JSESSIONID")
+                .logoutSuccessHandler(
+                    (request, response, authentication) ->
+                        response.setStatus(
+                            HttpStatus.NO_CONTENT.value()
+                        )
+                )
+                .permitAll()
+            )
 
             .formLogin(form -> form.disable())
             .httpBasic(basic -> basic.disable());
@@ -79,12 +110,17 @@ public class SecurityConfig {
 
             cors.setAllowedOrigins(List.of(
                 "http://localhost:5173",
+                "http://localhost:5174",
                 "http://localhost:3000"
             ));
 
             cors.setAllowedMethods(List.of(
                 "GET",
+                "HEAD",
                 "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
                 "OPTIONS"
             ));
 
