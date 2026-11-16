@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/reclamacao")
@@ -33,7 +34,7 @@ public class ReclamacaoController {
 
         @PostMapping
         @Transactional
-        public ResponseEntity<ReclamacaoDTO> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO form) {
+        public ResponseEntity<String> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO form) {
             System.out.println("CHEGUEI");
 
             duplicidadeService.validarERegistrar(form.reclamacao());//Barra reclamacao repetida (devolve 409)
@@ -91,6 +92,18 @@ public class ReclamacaoController {
             // Testando se resposta está funcionando
             System.out.println(resposta);
 
-            return ResponseEntity.status(HttpStatus.CREATED).body(resposta);
+            return ResponseEntity.status(HttpStatus.CREATED).body("Reclamacao criada com sucesso.");
+    }
+
+    @GetMapping("/protocolo/{codigo}")
+    public ResponseEntity<Object> procurarReclamacao(@PathVariable String codigo){
+        Optional<Manifestacao> codigoOptional = manifestacaoRepository.findByProtocoloUnico(codigo);
+        if (codigoOptional.isEmpty()){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Protocolo não encontrado.");
+        }
+
+        Manifestacao manifestacaoEncontrada = codigoOptional.get();
+
+        return ResponseEntity.ok("Manifestacao encontrada: " + manifestacaoEncontrada);
     }
 }
