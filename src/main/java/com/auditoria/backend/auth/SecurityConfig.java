@@ -44,36 +44,43 @@ public class SecurityConfig {
                     DispatcherType.ERROR
                 ).permitAll();
 
-                // Login e cadastro não exigem sessão autenticada.
                 auth.requestMatchers(
                     HttpMethod.POST,
                     "/api/auth/login",
                     "/api/auth/registro"
                 ).permitAll();
 
-                // Dados públicos necessários às telas de acesso.
                 auth.requestMatchers(
                     HttpMethod.GET,
                     "/api/auth/csrf",
                     "/api/empresas/publicas"
                 ).permitAll();
 
-                // Cliente e equipe podem consultar a própria sessão.
+                // Continua exigindo sessão, inclusive em dev.
                 auth.requestMatchers(
                     HttpMethod.GET,
                     "/api/auth/me"
                 ).authenticated();
 
-                // Demais endpoints ficam restritos à equipe.
-                auth.anyRequest().hasAnyRole(
-                    "ADMIN",
-                    "RESPONSAVEL",
-                    "COLABORADOR"
-                );
+                if (desenvolvimento) {
+                    // Liberação temporária para testes locais.
+                    auth.anyRequest().permitAll();
+                } else {
+                    auth.anyRequest().hasAnyRole(
+                        "ADMIN",
+                        "RESPONSAVEL",
+                        "COLABORADOR"
+                    );
+                }
             })
 
-            // Mantém a proteção CSRF também em desenvolvimento.
-            .csrf(csrf -> {})
+            .csrf(csrf -> {
+                if (desenvolvimento) {
+                    // Mantém a geração do token, mas dispensa
+                    // sua validação durante os testes em dev.
+                    csrf.ignoringRequestMatchers(request -> true);
+                }
+            })
 
             .exceptionHandling(exceptions ->
                 exceptions.authenticationEntryPoint(
@@ -81,7 +88,6 @@ public class SecurityConfig {
                 )
             )
 
-            // Encerra a sessão por POST com token CSRF.
             .logout(logout -> logout
                 .logoutUrl("/api/auth/logout")
                 .invalidateHttpSession(true)
