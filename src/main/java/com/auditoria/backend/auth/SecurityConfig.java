@@ -7,8 +7,11 @@ import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.cors.CorsConfiguration;
@@ -32,7 +35,6 @@ public class SecurityConfig {
         boolean desenvolvimento = environment.matchesProfiles("dev");
 
         http
-            // Permite manter uma sessão quando o usuário fizer login.
             .securityContext(context ->
                 context.securityContextRepository(repository)
             )
@@ -42,26 +44,57 @@ public class SecurityConfig {
                     DispatcherType.ERROR
                 ).permitAll();
 
+                // Login e cadastro não exigem sessão autenticada.
                 auth.requestMatchers(
+                    HttpMethod.POST,
                     "/api/auth/login",
-                    "/api/auth/csrf"
+                    "/api/auth/registro"
                 ).permitAll();
 
-                if (desenvolvimento) {
-                    // Libera os endpoints para os testes do grupo.
-                    auth.anyRequest().permitAll();
-                } else {
-                    auth.anyRequest().authenticated();
-                }
+                // Dados públicos necessários às telas de acesso.
+                auth.requestMatchers(
+                    HttpMethod.GET,
+                    "/api/auth/csrf",
+                    "/api/empresas/publicas"
+                ).permitAll();
+
+                // Cliente e equipe podem consultar a própria sessão.
+                auth.requestMatchers(
+                    HttpMethod.GET,
+                    "/api/auth/me"
+                ).authenticated();
+
+                // Demais endpoints ficam restritos à equipe.
+                auth.anyRequest().hasAnyRole(
+                    "ADMIN",
+                    "RESPONSAVEL",
+                    "COLABORADOR"
+                );
             })
 
-            .csrf(csrf -> {
-                if (desenvolvimento) {
-                    // Dispensa a validação em dev, mas mantém a geração
-                    // do token para compatibilidade com a tela de login.
-                    csrf.ignoringRequestMatchers(request -> true);
-                }
-            })
+            // Mantém a proteção CSRF também em desenvolvimento.
+            .csrf(csrf -> {})
+
+            .exceptionHandling(exceptions ->
+                exceptions.authenticationEntryPoint(
+                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)
+                )
+            )
+
+            // Encerra a sessão por POST com token CSRF.
+            .logout(logout -> logout
+                .logoutUrl("/api/auth/logout")
+                .invalidateHttpSession(true)
+                .clearAuthentication(true)
+                .deleteCookies("JSESSIONID")
+                .logoutSuccessHandler(
+                    (request, response, authentication) ->
+                        response.setStatus(
+                            HttpStatus.NO_CONTENT.value()
+                        )
+                )
+                .permitAll()
+            )
 
             .formLogin(form -> form.disable())
             .httpBasic(basic -> basic.disable());
@@ -71,6 +104,7 @@ public class SecurityConfig {
 
             cors.setAllowedOrigins(List.of(
                 "http://localhost:5173",
+                "http://localhost:5174",
                 "http://localhost:3000"
             ));
 
