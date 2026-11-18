@@ -26,14 +26,12 @@ class IaControllerTest {
     @Test
     void deveReformularReclamacaoComSucesso() throws Exception {
         when(geminiService.reformularReclamacao(
-                "Texto cheio de raiva pelo atraso!",
-                "Usar linguagem formal"
+                "Texto cheio de raiva pelo atraso!"
         )).thenReturn("Venho registrar minha insatisfação quanto ao atraso ocorrido.");
 
         String payload = """
                 {
-                  "textoOriginal": "Texto cheio de raiva pelo atraso!",
-                  "instrucoesRevisor": "Usar linguagem formal"
+                  "textoOriginal": "Texto cheio de raiva pelo atraso!"
                 }
                 """;
 
@@ -49,8 +47,7 @@ class IaControllerTest {
     void deveRetornarBadRequestQuandoTextoOriginalEstiverEmBranco() throws Exception {
         String payload = """
                 {
-                  "textoOriginal": "   ",
-                  "instrucoesRevisor": "Manter tom neutro"
+                  "textoOriginal": "   "
                 }
                 """;
 
@@ -64,8 +61,22 @@ class IaControllerTest {
     }
 
     @Test
+    void deveRetornarBadRequestQuandoTextoOriginalExcederLimite() throws Exception {
+        String payload = "{\"textoOriginal\":\"%s\"}".formatted("a".repeat(5001));
+
+        mockMvc.perform(post("/api/ia/reformular")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.erro")
+                        .value("O texto original deve ter no máximo 5000 caracteres."));
+
+        verifyNoInteractions(geminiService);
+    }
+
+    @Test
     void deveRetornarGatewayTimeoutQuandoApiExternaExcederTempoLimite() throws Exception {
-        when(geminiService.reformularReclamacao(anyString(), any()))
+        when(geminiService.reformularReclamacao(anyString()))
                 .thenThrow(new IaIntegracaoException(
                         HttpStatus.GATEWAY_TIMEOUT,
                         "Tempo limite excedido ao comunicar com a API do Gemini."
@@ -73,8 +84,7 @@ class IaControllerTest {
 
         String payload = """
                 {
-                  "textoOriginal": "Reclamação sobre cobrança indevida.",
-                  "instrucoesRevisor": "Destacar valor cobrado"
+                  "textoOriginal": "Reclamação sobre cobrança indevida."
                 }
                 """;
 

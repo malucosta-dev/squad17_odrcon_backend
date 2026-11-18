@@ -31,8 +31,7 @@ public class IaController {
             @Valid @RequestBody ReformulacaoRequest request
     ) {
         String textoReformulado = geminiService.reformularReclamacao(
-                request.textoOriginal(),
-                request.instrucoesRevisor()
+                request.textoOriginal()
         );
 
         return ResponseEntity.ok(

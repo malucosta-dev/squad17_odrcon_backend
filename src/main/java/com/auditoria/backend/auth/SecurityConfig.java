@@ -14,6 +14,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -33,6 +35,8 @@ public class SecurityConfig {
     ) throws Exception {
 
         boolean desenvolvimento = environment.matchesProfiles("dev");
+        var reformulacaoPublica = PathPatternRequestMatcher.withDefaults()
+            .matcher(HttpMethod.POST, "/api/ia/reformular");
 
         http
             .securityContext(context ->
@@ -56,6 +60,8 @@ public class SecurityConfig {
                     "/api/empresas/publicas"
                 ).permitAll();
 
+                auth.requestMatchers(reformulacaoPublica).permitAll();
+
                 // Continua exigindo sessão, inclusive em dev.
                 auth.requestMatchers(
                     HttpMethod.GET,
@@ -76,9 +82,8 @@ public class SecurityConfig {
 
             .csrf(csrf -> {
                 if (desenvolvimento) {
-                    // Mantém a geração do token, mas dispensa
-                    // sua validação durante os testes em dev.
-                    csrf.ignoringRequestMatchers(request -> true);
+                    // Mantém a exceção de dev nas outras rotas.
+                    csrf.ignoringRequestMatchers(new NegatedRequestMatcher(reformulacaoPublica));
                 }
             })
 

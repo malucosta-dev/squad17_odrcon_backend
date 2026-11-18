@@ -32,7 +32,7 @@ class GeminiEndpointRealTest {
         @Bean
         GeminiService servicoGemini() {
             return new GeminiService(System.getenv("GEMINI_API_KEY"),
-                    "gemini-3.5-flash",
+                    "gemini-3.1-flash-lite",
                     "https://generativelanguage.googleapis.com/v1beta/models", 15);
         }
     }
@@ -40,14 +40,12 @@ class GeminiEndpointRealTest {
     @Autowired WebApplicationContext contexto;
 
     @Test
-    void deveReformularPeloEndpointProtegidoComGeminiReal() throws Exception {
+    void deveReformularPeloEndpointPublicoComGeminiReal() throws Exception {
         MockMvcBuilders.webAppContextSetup(contexto).apply(springSecurity()).build()
                 .perform(post("/api/ia/reformular")
-                        .with(user("teste-simulado").roles("COLABORADOR"))
                         .with(csrf()).contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"textoOriginal":"O pedido ficticio 123 atrasou dois dias. Solicito uma solucao.",
-                                 "instrucoesRevisor":"Manter os fatos e usar linguagem formal."}
+                                {"textoOriginal":"O pedido ficticio 123 atrasou dois dias. Solicito uma solucao."}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.textoReformulado", not(blankOrNullString())))

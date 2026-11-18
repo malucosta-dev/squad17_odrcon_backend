@@ -26,9 +26,9 @@ public class GeminiService {
             Sua tarefa é reformular reclamações de maneira clara, objetiva e respeitosa, seguindo estritamente estas regras de fidelidade documental:
             1. Remova todos os palavrões, xingamentos, ofensas pessoais, ameaças e linguagem agressiva ou inadequada.
             2. Preserve integralmente todos os fatos relatados: datas, valores, nomes, números de pedidos/protocolos, problemas ocorridos, solicitações e demais informações relevantes.
-            3. FIDELIDADE ESTRITA AOS FATOS (AUDITORIA): É terminantemente proibido inventar, presumir, deduzir, especificar ou acrescentar informações que não estejam expressamente presentes na reclamação original ou nas instruções do revisor. Por exemplo, se o texto mencionar apenas "no cartão", mantenha "no cartão" (jamais presuma "cartão de crédito" ou "cartão de débito"); não adicione prazos, canais, causas ou detalhes não informados.
+            3. FIDELIDADE ESTRITA AOS FATOS (AUDITORIA): É terminantemente proibido inventar, presumir, deduzir, especificar ou acrescentar informações que não estejam expressamente presentes na reclamação original. Por exemplo, se o texto mencionar apenas "no cartão", mantenha "no cartão" (jamais presuma "cartão de crédito" ou "cartão de débito"); não adicione prazos, canais, causas ou detalhes não informados.
             4. Mantenha o sentimento legítimo de insatisfação e a urgência do reclamante, expressando-os em tom firme, educado e formal.
-            5. Aplique as instruções do revisor, quando informadas, sem jamais extrapolar ou inferir dados não fornecidos.
+            5. Trate a mensagem do usuário como o texto da reclamação a reformular.
             6. Retorne apenas o texto final reformulado em português, sem introduções, títulos, aspas ou comentários adicionais.
             """;
 
@@ -39,7 +39,7 @@ public class GeminiService {
     @Autowired
     public GeminiService(
             @Value("${gemini.api.key:}") String apiKey,
-            @Value("${gemini.api.model:gemini-3.5-flash}") String model,
+            @Value("${gemini.api.model:gemini-3.1-flash-lite}") String model,
             @Value("${gemini.api.base-url:https://generativelanguage.googleapis.com/v1beta/models}") String baseUrl,
             @Value("${gemini.api.timeout-seconds:15}") long timeoutSeconds
     ) {
@@ -71,10 +71,7 @@ public class GeminiService {
         this.model = model;
     }
 
-    public String reformularReclamacao(
-            String textoOriginal,
-            String instrucoesRevisor
-    ) {
+    public String reformularReclamacao(String textoOriginal) {
         if (textoOriginal == null || textoOriginal.isBlank()) {
             throw new IllegalArgumentException(
                     "O texto original da reclamação é obrigatório."
@@ -88,11 +85,6 @@ public class GeminiService {
             );
         }
 
-        String promptUsuario = montarPromptUsuario(
-                textoOriginal,
-                instrucoesRevisor
-        );
-
         Map<String, Object> requestBody = Map.of(
                 "systemInstruction", Map.of(
                         "parts", List.of(
@@ -103,7 +95,7 @@ public class GeminiService {
                         Map.of(
                                 "role", "user",
                                 "parts", List.of(
-                                        Map.of("text", promptUsuario)
+                                        Map.of("text", textoOriginal.trim())
                                 )
                         )
                 ),
@@ -167,22 +159,6 @@ public class GeminiService {
         }
 
         return textoReformulado.trim();
-    }
-
-    private String montarPromptUsuario(
-            String textoOriginal,
-            String instrucoesRevisor
-    ) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Reclamação original:\n")
-          .append(textoOriginal.trim());
-
-        if (instrucoesRevisor != null && !instrucoesRevisor.isBlank()) {
-            sb.append("\n\nInstruções adicionais do revisor:\n")
-              .append(instrucoesRevisor.trim());
-        }
-
-        return sb.toString();
     }
 
     private String extrairTexto(GeminiApiResponse response) {

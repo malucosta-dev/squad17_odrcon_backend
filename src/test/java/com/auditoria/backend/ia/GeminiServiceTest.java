@@ -46,7 +46,7 @@ class GeminiServiceTest {
                   {"text":"Solicito "}, {"text":"a troca.", "thought":false}
                 ]}}]}
                 """, HttpStatus.OK);
-        assertEquals("Solicito a troca.", servico.reformularReclamacao("Quero trocar", null));
+        assertEquals("Solicito a troca.", servico.reformularReclamacao("Quero trocar"));
     }
 
     @Test
@@ -58,7 +58,7 @@ class GeminiServiceTest {
                     ]}}]}
                     """.formatted(motivo), HttpStatus.OK);
             assertEquals(HttpStatus.BAD_GATEWAY, assertThrows(IaIntegracaoException.class,
-                    () -> servico.reformularReclamacao("Texto original", null)).getStatus());
+                    () -> servico.reformularReclamacao("Texto original")).getStatus());
         }
     }
 
@@ -67,7 +67,7 @@ class GeminiServiceTest {
         GeminiService servico = criarServicoComResposta("{\"error\":\"detalhe privado\"}",
                 HttpStatus.TOO_MANY_REQUESTS);
         IaIntegracaoException ex = assertThrows(IaIntegracaoException.class,
-                () -> servico.reformularReclamacao("Texto original", null));
+                () -> servico.reformularReclamacao("Texto original"));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
         assertFalse(ex.getMessage().contains("detalhe privado"));
     }
@@ -76,7 +76,7 @@ class GeminiServiceTest {
     void deveTratarJsonInvalidoComoErroDeIntegracao() {
         GeminiService servico = criarServicoComResposta("{invalido", HttpStatus.OK);
         assertEquals(HttpStatus.BAD_GATEWAY, assertThrows(IaIntegracaoException.class,
-                () -> servico.reformularReclamacao("Texto original", null)).getStatus());
+                () -> servico.reformularReclamacao("Texto original")).getStatus());
     }
 
     @Test
@@ -135,8 +135,7 @@ class GeminiServiceTest {
         );
 
         String resultado = service.reformularReclamacao(
-                "Essa empresa é uma droga! Faz 15 dias que meu pedido #1042 está atrasado!",
-                "Manter o número do pedido e adotar tom formal."
+                "Essa empresa é uma droga! Faz 15 dias que meu pedido #1042 está atrasado!"
         );
 
         assertEquals(
@@ -150,7 +149,6 @@ class GeminiServiceTest {
         assertEquals(HttpMethod.POST, metodoCapturado.get());
         assertEquals("chave-teste-simulada", headersCapturados.get().getFirst("x-goog-api-key"));
         assertTrue(bodyCapturado.get().contains("pedido #1042"));
-        assertTrue(bodyCapturado.get().contains("Manter o número do pedido e adotar tom formal."));
         assertTrue(bodyCapturado.get().contains("systemInstruction"));
         assertTrue(bodyCapturado.get().contains("FIDELIDADE ESTRITA AOS FATOS"));
         assertTrue(bodyCapturado.get().contains("jamais presuma"));
@@ -204,8 +202,7 @@ class GeminiServiceTest {
         );
 
         String resultado = service.reformularReclamacao(
-                "Vocês são um bando de incompetentes e idiotas! Comprei uma geladeira no dia 02/11/2026 pelo valor de R$ 3.200,00 no cartão, pedido #8841, e essa porqueira chegou toda amassada e não gela nada! Quero a troca imediata ou meu dinheiro de volta!",
-                "Remover xingamentos e manter tom formal."
+                "Vocês são um bando de incompetentes e idiotas! Comprei uma geladeira no dia 02/11/2026 pelo valor de R$ 3.200,00 no cartão, pedido #8841, e essa porqueira chegou toda amassada e não gela nada! Quero a troca imediata ou meu dinheiro de volta!"
         );
 
         assertTrue(bodyCapturado.get().contains("proibido inventar, presumir, deduzir"));
@@ -225,12 +222,12 @@ class GeminiServiceTest {
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.reformularReclamacao("   ", "Instrução")
+                () -> service.reformularReclamacao("   ")
         );
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.reformularReclamacao(null, null)
+                () -> service.reformularReclamacao(null)
         );
     }
 
@@ -245,7 +242,7 @@ class GeminiServiceTest {
 
         IaIntegracaoException exception = assertThrows(
                 IaIntegracaoException.class,
-                () -> service.reformularReclamacao("Texto da reclamação", null)
+                () -> service.reformularReclamacao("Texto da reclamação")
         );
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exception.getStatus());
@@ -281,7 +278,7 @@ class GeminiServiceTest {
 
         IaIntegracaoException exception = assertThrows(
                 IaIntegracaoException.class,
-                () -> service.reformularReclamacao("Reclamação de teste", "Formalizar")
+                () -> service.reformularReclamacao("Reclamação de teste")
         );
 
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, exception.getStatus());
@@ -315,7 +312,7 @@ class GeminiServiceTest {
 
         IaIntegracaoException exception = assertThrows(
                 IaIntegracaoException.class,
-                () -> service.reformularReclamacao("Reclamação de teste", null)
+                () -> service.reformularReclamacao("Reclamação de teste")
         );
 
         assertEquals(HttpStatus.BAD_GATEWAY, exception.getStatus());
@@ -349,7 +346,7 @@ class GeminiServiceTest {
 
         IaIntegracaoException exception = assertThrows(
                 IaIntegracaoException.class,
-                () -> service.reformularReclamacao("Reclamação de teste", null)
+                () -> service.reformularReclamacao("Reclamação de teste")
         );
 
         assertEquals(HttpStatus.BAD_GATEWAY, exception.getStatus());
@@ -383,7 +380,7 @@ class GeminiServiceTest {
 
         IaIntegracaoException exception = assertThrows(
                 IaIntegracaoException.class,
-                () -> service.reformularReclamacao("Texto da reclamação", null)
+                () -> service.reformularReclamacao("Texto da reclamação")
         );
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exception.getStatus());
