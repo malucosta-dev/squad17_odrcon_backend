@@ -13,7 +13,6 @@ import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 @Entity
-@Immutable
 @Table(name = "manifestacao")
 public class Manifestacao {
 
@@ -86,8 +85,33 @@ public class Manifestacao {
     @Column(name = "nivel_gravidade", length = 30)
     private String nivelGravidade;
 
-    protected Manifestacao() {
+    public Manifestacao() {
         // exigido pelo JPA
+    }
+
+    public Manifestacao(Integer idManifestacao, Integer idUnidade, Integer idEmpresa, Integer idSolicitante, Integer idResponsavel, String tipo, String status, String prioridade, String descricaoOriginal, String descricaoTratada, String dadosEstruturados, LocalDateTime prazoResposta, Integer nivelEscalonamento, String avaliacaoResultado, Integer avaliacaoNota, LocalDateTime criadoEm, LocalDateTime atualizadoEm, String canal, String protocoloUnico, Boolean anonimo, String statusProcessamento, String nivelGravidade) {
+        this.idManifestacao = idManifestacao;
+        this.idUnidade = idUnidade;
+        this.idEmpresa = idEmpresa;
+        this.idSolicitante = idSolicitante;
+        this.idResponsavel = idResponsavel;
+        this.tipo = tipo;
+        this.status = status;
+        this.prioridade = prioridade;
+        this.descricaoOriginal = descricaoOriginal;
+        this.descricaoTratada = descricaoTratada;
+        this.dadosEstruturados = dadosEstruturados;
+        this.prazoResposta = prazoResposta;
+        this.nivelEscalonamento = nivelEscalonamento;
+        this.avaliacaoResultado = avaliacaoResultado;
+        this.avaliacaoNota = avaliacaoNota;
+        this.criadoEm = criadoEm;
+        this.atualizadoEm = atualizadoEm;
+        this.canal = canal;
+        this.protocoloUnico = protocoloUnico;
+        this.anonimo = anonimo;
+        this.statusProcessamento = statusProcessamento;
+        this.nivelGravidade = nivelGravidade;
     }
 
     public Integer getIdManifestacao() { return idManifestacao; }
