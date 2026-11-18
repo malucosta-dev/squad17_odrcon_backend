@@ -1,4 +1,3 @@
-
 package com.auditoria.backend.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -9,6 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,7 +27,12 @@ public class AuthController {
     private final SecurityContextRepository securityContextRepository;
 
     private static final Set<String> PERFIS_PERMITIDOS =
-            Set.of("ADMIN", "RESPONSAVEL", "COLABORADOR");
+            Set.of(
+                    "ADMIN",
+                    "RESPONSAVEL",
+                    "COLABORADOR",
+                    "CLIENTE"
+            );
 
     public AuthController(
             AuthService authService,
@@ -43,22 +48,18 @@ public class AuthController {
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse
     ) {
-
-        // Valida as credenciais e a empresa do usuário
         Usuario usuario = authService.validarCredenciais(
                 request.email(),
                 request.senha(),
                 request.idEmpresa()
         );
 
-        // Verifica se o perfil é permitido
         String perfil = usuario.getPerfilUsuario();
 
         if (perfil == null || !PERFIS_PERMITIDOS.contains(perfil)) {
             throw new IllegalArgumentException("Credenciais inválidas.");
         }
 
-        // Identifica o usuário e sua empresa
         String principal = usuario.getIdEmpresa()
                 + ":" + usuario.getIdUsuario();
 
@@ -71,7 +72,7 @@ public class AuthController {
                         )
                 );
 
-        // Cria ou renova a identificação da sessão HTTP
+        // Cria a sessão ou troca seu identificador após o login.
         HttpSession sessao = httpRequest.getSession(false);
 
         if (sessao == null) {
@@ -80,7 +81,6 @@ public class AuthController {
             httpRequest.changeSessionId();
         }
 
-        // Registra o usuário autenticado no Spring Security
         SecurityContext contexto =
                 SecurityContextHolder.createEmptyContext();
 
@@ -93,7 +93,6 @@ public class AuthController {
                 httpResponse
         );
 
-        // Retorna os dados do usuário sem expor a senha
         LoginResponse resposta = new LoginResponse(
                 usuario.getIdUsuario(),
                 usuario.getNomeUsuario(),
@@ -104,7 +103,58 @@ public class AuthController {
         return ResponseEntity.ok(resposta);
     }
 
-    // Retorna HTTP 401 quando as credenciais forem inválidas
+    @GetMapping("/me")
+    public ResponseEntity<Map<String, Object>> consultarSessao(
+            Authentication authentication
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .build();
+        }
+
+        String perfil = authentication.getAuthorities()
+                .stream()
+                .map(authority -> authority.getAuthority())
+                .filter(authority -> authority.startsWith("ROLE_"))
+                .map(authority -> authority.substring(5))
+                .filter(PERFIS_PERMITIDOS::contains)
+                .findFirst()
+                .orElse(null);
+
+        if (perfil == null) {
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .build();
+        }
+
+        String[] identificacao =
+                authentication.getName().split(":");
+
+        if (identificacao.length != 2) {
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .build();
+        }
+
+        try {
+            Integer idEmpresa = Integer.valueOf(identificacao[0]);
+            Integer idUsuario = Integer.valueOf(identificacao[1]);
+
+            return ResponseEntity.ok(
+                    Map.<String, Object>of(
+                            "idEmpresa", idEmpresa,
+                            "idUsuario", idUsuario,
+                            "perfil", perfil
+                    )
+            );
+        } catch (NumberFormatException exception) {
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .build();
+        }
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> tratarCredenciaisInvalidas(
             IllegalArgumentException exception
