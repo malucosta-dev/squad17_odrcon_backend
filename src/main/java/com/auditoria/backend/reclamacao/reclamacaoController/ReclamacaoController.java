@@ -35,23 +35,16 @@ public class ReclamacaoController {
         @PostMapping
         @Transactional
         public ResponseEntity<String> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO form) {
-            System.out.println("CHEGUEI");
-
             duplicidadeService.validarERegistrar(form.reclamacao());//Barra reclamacao repetida (devolve 409)
 
-            // Testando se o arquivo chegou de verdade
-            if (form.arquivo() != null && !form.arquivo().isEmpty()) {
-                System.out.println("ARQUIVO RECEBIDO COM SUCESSO!");
-                System.out.println("Nome do arquivo: " + form.arquivo().getOriginalFilename());
-                System.out.println("Tamanho (bytes): " + form.arquivo().getSize());
-            } else {
-                System.out.println("Nenhum arquivo enviado.");
-            }
+            Integer idEmpresa = 0;
+            Integer idUnidade = 0;
 
+            // Usuario fake. Precisamos de um jeito de identificar o usuario logado.
             UsuarioDTO usuario = null;
             if (Boolean.FALSE.equals(form.isAnonimo())) {
                 usuario = new UsuarioDTO(
-                        999, 1, 1,
+                        1, null, 1,
                         "Teste",
                         "teste@example.com",
                         "(99) 9999-9999",
@@ -60,14 +53,20 @@ public class ReclamacaoController {
                         true,
                         LocalDateTime.now()
                 );
+                idEmpresa = usuario.idEmpresa();
+                idUnidade = usuario.idUnidade();
+
+            } else {
+                idEmpresa = form.idEmpresa();
+                idUnidade = form.idUnidade();
             }
 
             ReclamacaoDTO resposta = new ReclamacaoDTO(usuario, form);
 
             manifestacaoRepository.save(new Manifestacao(
                     null,                                          // 1. idManifestacao (gerado pelo banco)
-                    resposta.usuario().idUnidade(),                             // 2. idUnidade
-                    resposta.usuario().idUnidade(),                             // 3. idEmpresa (obrigatório)
+                    idUnidade,                                                  // 2. idUnidade
+                    idEmpresa,                                                  // 3. idEmpresa (obrigatório)
                     usuario != null ? resposta.usuario().idUsuario() : null,    // 4. idSolicitante
                     null,                                                       // 5. idResponsavel
                     "RECLAMACAO",                                               // 6. tipo (obrigatório)
