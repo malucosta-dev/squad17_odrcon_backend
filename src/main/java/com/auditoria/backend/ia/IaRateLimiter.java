@@ -14,13 +14,12 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 /**
  * Limitador de taxa (rate limiter) em memória para o endpoint de reformulação
@@ -235,9 +234,15 @@ public class IaRateLimiter {
         if (config == null || config.isBlank()) {
             return Collections.emptySet();
         }
-        return Arrays.stream(config.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toUnmodifiableSet());
+        Set<String> proxies = new HashSet<>();
+        for (String item : config.split(",")) {
+            if (item != null) {
+                String limpo = item.trim();
+                if (!limpo.isEmpty()) {
+                    proxies.add(limpo);
+                }
+            }
+        }
+        return Collections.unmodifiableSet(proxies);
     }
 }

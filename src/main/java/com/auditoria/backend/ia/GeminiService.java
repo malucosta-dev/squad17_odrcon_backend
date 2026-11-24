@@ -271,7 +271,7 @@ public class GeminiService {
                 && response.promptFeedback().blockReason() != null
                 && !response.promptFeedback().blockReason().isBlank()) {
             throw new IaIntegracaoException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    HttpStatus.UNPROCESSABLE_CONTENT,
                     MENSAGEM_BLOQUEIO_SEGURANCA);
         }
 
@@ -293,7 +293,7 @@ public class GeminiService {
 
             if (!possuiCandidatoValido && bloqueadoPorSeguranca) {
                 throw new IaIntegracaoException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        HttpStatus.UNPROCESSABLE_CONTENT,
                         MENSAGEM_BLOQUEIO_SEGURANCA);
             }
         }
@@ -335,7 +335,7 @@ public class GeminiService {
 
         if (limpo.contains(SENTINELA_SEM_RECLAMACAO)) {
             throw new IaIntegracaoException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    HttpStatus.UNPROCESSABLE_CONTENT,
                     MENSAGEM_ENTRADA_SEM_RECLAMACAO);
         }
 
@@ -343,7 +343,7 @@ public class GeminiService {
         for (String marcador : MARCADORES_VAZAMENTO_INTERNO) {
             if (normalizado.contains(marcador)) {
                 throw new IaIntegracaoException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        HttpStatus.UNPROCESSABLE_CONTENT,
                         MENSAGEM_SAIDA_INVALIDA);
             }
         }
