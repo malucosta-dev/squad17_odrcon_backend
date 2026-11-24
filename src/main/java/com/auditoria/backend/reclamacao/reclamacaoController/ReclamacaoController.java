@@ -76,7 +76,7 @@ public class ReclamacaoController {
                     usuario != null ? resposta.usuario().idUsuario() : null,    // 4. idSolicitante
                     null,                                                       // 5. idResponsavel
                     "RECLAMACAO",                                               // 6. tipo (obrigatório)
-                    "ABERTA",                                                   // 7. status (obrigatório)
+                    "RECEBIDO",                                                 // 7. status (obrigatório)
                     null,                                                       // 8. prioridade
                     resposta.form().reclamacao(),                               // 9. descricaoOriginal (obrigatório)
                     null,                                                       // 10. descricaoTratada

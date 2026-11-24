@@ -97,8 +97,8 @@ public class Manifestacao {
         this.atualizadoEm = LocalDateTime.now();
     }
 
+    // Construtores
     public Manifestacao() {
-        // exigido pelo JPA
     }
 
     public Manifestacao(Integer idManifestacao, Integer idUnidade, Integer idEmpresa, Integer idSolicitante, Integer idResponsavel, String tipo, String status, String prioridade, String descricaoOriginal, String descricaoTratada, String dadosEstruturados, LocalDateTime prazoResposta, Integer nivelEscalonamento, String avaliacaoResultado, Integer avaliacaoNota, LocalDateTime criadoEm, LocalDateTime atualizadoEm, String canal, String protocoloUnico, Boolean anonimo, String statusProcessamento, String nivelGravidade) {
@@ -126,6 +126,7 @@ public class Manifestacao {
         this.nivelGravidade = nivelGravidade;
     }
 
+    // Getters
     public Integer getIdManifestacao() { return idManifestacao; }
     public Integer getIdUnidade() { return idUnidade; }
     public Integer getIdEmpresa() { return idEmpresa; }
@@ -148,4 +149,8 @@ public class Manifestacao {
     public Boolean getAnonimo() { return anonimo; }
     public String getStatusProcessamento() { return statusProcessamento; }
     public String getNivelGravidade() { return nivelGravidade; }
+
+
+    // Setters
+    public void setStatus(String status) {this.status = status;}
 }
