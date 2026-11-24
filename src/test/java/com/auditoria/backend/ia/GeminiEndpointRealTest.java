@@ -31,8 +31,12 @@ class GeminiEndpointRealTest {
     static class Configuracao {
         @Bean
         GeminiService servicoGemini() {
+            String modelo = System.getenv("GEMINI_API_MODEL");
+            if (modelo == null || modelo.isBlank()) {
+                modelo = GeminiService.DEFAULT_MODEL;
+            }
             return new GeminiService(System.getenv("GEMINI_API_KEY"),
-                    "gemini-3.1-flash-lite",
+                    modelo,
                     "https://generativelanguage.googleapis.com/v1beta/models", 15);
         }
     }

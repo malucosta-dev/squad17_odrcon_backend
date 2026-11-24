@@ -2,12 +2,13 @@
 
 ## Configuracao
 
-Configure `GEMINI_API_KEY` no `.env` da raiz ou no ambiente do processo que inicia o backend.
-Nao inclua o valor em commits, capturas de tela, logs ou mensagens.
-A aplicação carrega o .env da raiz por meio de spring.config.import, quando iniciada nessa pasta. Variáveis de ambiente têm prioridade.
+Configure `GEMINI_API_KEY` e `GEMINI_API_MODEL=gemini-3.5-flash-lite` no `.env` da raiz ou no ambiente do processo que inicia o backend.
+Nao inclua o valor da chave em commits, capturas de tela, logs ou mensagens.
+A aplicacao carrega o `.env` da raiz por meio de `spring.config.import`, quando iniciada nessa pasta. Variaveis de ambiente tem prioridade.
 
-As propriedades `gemini.api.model`, `gemini.api.base-url` e
-`gemini.api.timeout-seconds` estao em `application.properties`.
+As propriedades `gemini.api.model`, `gemini.api.base-url` e `gemini.api.timeout-seconds` estao em `application.properties`.
+O `GeminiService` adota `gemini-3.5-flash-lite` como modelo padrao interno (`@Value("${GEMINI_API_MODEL:${gemini.api.model:gemini-3.5-flash-lite}}")`). Como `application.properties` define `gemini.api.model=gemini-3.1-flash-lite`, definir `GEMINI_API_MODEL=gemini-3.5-flash-lite` no ambiente ou no `.env` garante a selecao de `gemini-3.5-flash-lite` em tempo de execucao sem modificar `application.properties`.
+Os limites de taxa do endpoint de IA (`gemini.ratelimit.*`) possuem valores padrao configurados diretamente em `IaRateLimiter` e podem ser sobrescritos por variaveis de ambiente ou propriedades sem alterar modulos externos.
 A chave fica no backend; o frontend nao deve chamar o Google diretamente.
 
 ## Testes isolados, sem Neon
@@ -21,12 +22,10 @@ mvn "-Dtest=GeminiServiceTest,IaControllerTest,IaSegurancaTest" test
 Esses testes simulam o Google e nao inicializam o banco.
 Nao use o resultado como prova de acesso real ao Gemini.
 
-## Endpoint protegido com Gemini real, sem usuario no Neon
+## Endpoint com Gemini real, sem usuario no Neon
 
 `GeminiEndpointRealTest` carrega o controller, o cliente Gemini e a mesma
-configuracao de seguranca da aplicacao. A identidade existe apenas no teste,
-com CSRF e filtros habilitados. Nao carrega JPA, nao consulta o Neon e nao
-abre uma rota publica. A chamada real consome a quota da chave configurada.
+configuracao de seguranca da aplicacao, com CSRF e filtros habilitados. Nao carrega JPA e nao consulta o Neon. A chamada real consome a quota da chave configurada.
 
 No PowerShell, com `GEMINI_API_KEY` ja disponivel no ambiente:
 
@@ -39,38 +38,6 @@ try {
 }
 ```
 
-Sem essa opcao, o teste real fica ignorado para evitar chamadas ao Google
-durante testes comuns. Esse teste usa `System.getenv("GEMINI_API_KEY")`,
-entao a chave precisa estar no ambiente do processo de teste; a configuracao
-da aplicacao nao basta para esse teste. Configure o ambiente pelo processo
-ou pela IDE antes da execucao; nao coloque chaves no codigo ou na linha de comando.
-
-O teste verifica HTTP 200, texto nao vazio e preservacao do protocolo ficticio
-123. Isso comprova o percurso pelo controller e Gemini, mas nao o login com
-senha no banco, CORS no navegador ou fidelidade de todos os textos possiveis.
-
-`IaSegurancaTest` verifica tambem que acesso anonimo e acesso autenticado sem
-CSRF recebem 403 e nao chegam a chamar o servico de IA.
-
-## Resultado da validacao em 11/11/2026
-
-O backend iniciou conectado ao Neon com ddl-auto=validate. Essa configuração valida o esquema, mas não garante conexão somente leitura.
-
-Os itens abaixo sao resultados registrados no relatorio anterior, sem nova
-execucao dos testes nesta revisao documental:
-
-- Endpoint de CSRF respondeu HTTP 200.
-- Gemini real respondeu pelo endpoint em MockMvc com filtros de seguranca,
-  identidade simulada e token CSRF: HTTP 200.
-- Execucao selecionada: 23 testes passaram, sem falhas ou testes ignorados.
-- Suite completa: 23 testes passaram, sem falhas; o teste real foi ignorado
-  intencionalmente nessa segunda execucao, pois ja havia passado separadamente.
-  O teste de carregamento da aplicacao passou conectado ao Neon; nao foi
-  comprovado que a conexao era somente leitura.
-- Login real permanece pendente de conta existente com senha conhecida.
-- Interface e CORS no navegador permanecem pendentes do frontend, que nao
-  esta neste repositorio. O teste com MockMvc nao substitui essa validacao.
-
 ## Contrato HTTP
 
 `POST /api/ia/reformular`, com `Content-Type: application/json`:
@@ -78,7 +45,7 @@ execucao dos testes nesta revisao documental:
 ```json
 {
   "textoOriginal": "O pedido ficticio 123 atrasou dois dias. Solicito uma solucao.",
-  "instrucoesRevisor": "Manter os fatos e usar linguagem formal."
+  "instrucoesRevisor": "Manter os fatos e usar linguagem formal em primeira pessoa."
 }
 ```
 
@@ -90,30 +57,33 @@ Resposta de sucesso:
 }
 ```
 
-O texto original e obrigatorio e aceita ate 5000 caracteres. As instrucoes
-sao opcionais e aceitam ate 1000 caracteres.
+- `textoOriginal`: obrigatorio, ate 5000 caracteres.
+- `instrucoesRevisor`: opcional (aceita ausencia, `null` ou vazio), ate 1000 caracteres. Quando informado, aplica-se exclusivamente a ajustes de apresentacao, estilo e formato, sem adicionar fatos e sem substituir as regras permanentes do sistema.
 
-A rota usa a autenticacao existente por sessao. O cliente precisa conservar
-o cookie de sessao e enviar o token CSRF obtido em `GET /api/auth/csrf`,
-usando o nome de header retornado nesse endpoint. Nao desabilite CSRF ou
-autenticacao para testar a IA. No navegador, confira tambem o preflight CORS.
+## Fluxo Anonimo, CSRF e Rate Limiting Restrito ao Modulo de IA
 
-Erros de validacao retornam 400. Chave ausente ou indisponibilidade/quota do
-Google retornam 503. Timeout retorna 504. Erros de comunicacao e respostas
-sem texto final utilizavel retornam 502. O corpo tratado contem `erro`.
-Falhas dos filtros de seguranca seguem o contrato da autenticacao existente.
+A rota `POST /api/ia/reformular` preserva o acesso anonimo e autenticado conforme definido em `SecurityConfig`, exigindo sempre o cookie de sessao e o token CSRF obtido em `GET /api/auth/csrf`.
 
-## Validacao real antes da entrega
+Para proteger a quota da API dentro do proprio modulo de IA (`IaRateLimiter`), sem exigir identificacao do denunciante e sem bloquear funcionarios que compartilham o mesmo IP corporativo (NAT/proxy):
 
-1. Configure a chave localmente, sem divulgar o valor.
-2. Use o ambiente de backend e a sessao de teste ja existentes. Iniciar a
-   aplicacao completa exige a configuracao de banco existente; nao altere o Neon.
-3. Envie somente uma reclamacao ficticia pelo endpoint autenticado.
-4. Confirme status 200 e `textoReformulado` nao vazio.
-5. Compare datas, valores, protocolos e solicitacoes com o original.
-6. Confirme no frontend a exibicao do resultado e de erros, sem substituir
-   automaticamente o relato original.
+- `gemini.ratelimit.session-max-requests` (padrao `10`): limite de 10 requisicoes por sessao a cada janela de 60 segundos.
+- `gemini.ratelimit.ip-max-requests` (padrao `60`): limite agregado de 60 requisicoes por IP a cada janela de 60 segundos.
+- `gemini.ratelimit.window-seconds` (padrao `60`): duracao da janela em segundos.
+- `gemini.ratelimit.trusted-proxies` (padrao vazio): lista opcional de IPs de proxies reversos confiaveis (separados por virgula). Cabecalhos `X-Forwarded-For` e `X-Real-IP` sao ignorados caso a requisicao nao provenha de um proxy confiavel configurado.
 
-O prompt orienta fidelidade, mas nao garante ausencia de inferencias.
-Revisao humana continua necessaria. Respostas interrompidas ou bloqueadas
-nao sao apresentadas como uma reformulacao concluida.
+Nenhum IP ou identificador de sessao e gravado em logs ou persistido junto as denuncias. Em memoria, os identificadores sao anonimizados com hash SHA-256 e sal efemero por inicializacao.
+
+> **Limitacoes conhecidas do Rate Limiting local:**
+> 1. **Sessao e IP:** Um cliente mal-intencionado que descarte cookies e solicite uma nova sessao + token CSRF a cada chamada contorna o limite por sessao (`10 req/min`), mas permanece contido pelo limite agregado por IP (`60 req/min`).
+> 2. **Multiplas instancias:** O `IaRateLimiter` mantem contadores em memoria local da JVM. Em ambientes com multiplas instancias horizontais do backend, recomenda-se utilizar rate limiting compartilhado (ex.: Redis + Bucket4j) ou no API Gateway/Ingress.
+
+## Codigos de Resposta e Erros
+
+- `200 OK`: reformulacao concluida com sucesso.
+- `400 Bad Request`: falha de validacao dos campos de entrada (`textoOriginal` em branco, > 5000 caracteres, ou `instrucoesRevisor` > 1000 caracteres).
+- `403 Forbidden`: token CSRF ausente ou invalido.
+- `422 Unprocessable Entity`: bloqueio pelos filtros de seguranca da IA (`promptFeedback.blockReason` ou `candidate.finishReason`), entrada sem relato de reclamacao valido ou bloqueio defensivo de saida.
+- `429 Too Many Requests`: limite de requisicoes por sessao ou IP atingido (inclui cabecalho `Retry-After`).
+- `502 Bad Gateway`: falha tecnica de comunicacao ou resposta truncada/invalida da API externa.
+- `503 Service Unavailable`: chave `GEMINI_API_KEY` ausente ou indisponibilidade/quota da API externa.
+- `504 Gateway Timeout`: tempo limite excedido na comunicacao com a API externa.
