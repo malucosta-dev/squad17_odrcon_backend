@@ -10,6 +10,7 @@ import java.text.Normalizer;
 import java.util.HexFormat;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 @Service
 public class DuplicidadeService {
@@ -17,12 +18,18 @@ public class DuplicidadeService {
     // Temporário: some ao reiniciar. Trocar por uma coluna UNIQUE quando houver banco.
     private final Set<String> hashesRegistrados = ConcurrentHashMap.newKeySet();
 
-    public void validarERegistrar(String texto) {
-        String hash = gerarHash(normalizar(texto));//Limpa o texto e o transforma em hash
+    public <T> T registrarSemDuplicidade(String texto, Supplier<T> registro) {
+        String hash = gerarHash(normalizar(texto));
 
-        // Tenta salvar o hash na lista. TRUE se nao existia, FALSE se ja
         if (!hashesRegistrados.add(hash)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Esta reclamação já foi registrada.");
+        }
+
+        try {
+            return registro.get();
+        } catch (RuntimeException e) {
+            hashesRegistrados.remove(hash);
+            throw e;
         }
     }
 
