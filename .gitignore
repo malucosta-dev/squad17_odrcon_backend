@@ -21,3 +21,6 @@ target/
 .env
 .env.*
 !.env.example
+
+# Anexos enviados (uploads locais)
+uploads/

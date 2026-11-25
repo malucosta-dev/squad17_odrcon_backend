@@ -1,5 +1,6 @@
 package com.auditoria.backend.reclamacao.reclamacaoController;
 
+import com.auditoria.backend.anexo.AnexoService;
 import com.auditoria.backend.manifestacao.Manifestacao;
 import com.auditoria.backend.manifestacao.ManifestacaoRepository;
 import com.auditoria.backend.reclamacao.reclamacaoService.DuplicidadeService;//Conecta com o detector de duplicata
@@ -30,6 +31,9 @@ public class ReclamacaoController {
     @Autowired
     private Proposta_solucaoRepository solucaoRepository;
 
+    @Autowired
+    private AnexoService anexoService;
+
     //Guarda o service no controller
     private final DuplicidadeService duplicidadeService;
 
@@ -40,6 +44,7 @@ public class ReclamacaoController {
         @PostMapping
         @Transactional
         public ResponseEntity<String> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO form) {
+            anexoService.validar(form.arquivo());//Barra arquivo invalido antes de registrar a reclamacao
             duplicidadeService.validarERegistrar(form.reclamacao());//Barra reclamacao repetida (devolve 409)
 
             Integer idEmpresa = 0;
@@ -93,6 +98,9 @@ public class ReclamacaoController {
                     "PENDENTE",                                                 // 21. statusProcessamento (obrigatório)
                     null                                                        // 22. nivelGravidade
             ));
+
+            // SALVANDO ANEXO DA RECLAMACAO (se veio arquivo)
+            anexoService.salvar(manifestacaoSalva, form.arquivo());
 
             // SALVANDO PROPOSTA DE SOLUCAO DO USUARIO
             if (Boolean.TRUE.equals(form.hasSolucao())) {
