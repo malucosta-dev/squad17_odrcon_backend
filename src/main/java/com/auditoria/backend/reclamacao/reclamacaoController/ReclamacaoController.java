@@ -37,29 +37,29 @@ public class ReclamacaoController {
     }
 
         @PostMapping
-        @Transactional
-        public ResponseEntity<String> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO form) {
+        @Transactional // <--
+        public ResponseEntity<String> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO form, Authentication authentication) { // identifica usuario logado
             duplicidadeService.validarERegistrar(form.reclamacao());//Barra reclamacao repetida (devolve 409)
 
             Integer idEmpresa = 0;
             Integer idUnidade = 0;
 
-            // Usuario fake. Precisamos de um jeito de identificar o usuario logado.
-            UsuarioDTO usuario = null;
+            UsuarioDTO usuario = null; //Identifica usuario logado
             if (Boolean.FALSE.equals(form.isAnonimo())) {
+                if (authentication == null || authentication instanceof AnonymousAuthenticationToken) {
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Não autorizado");
+                }
+                String[] partes = authentication.getName().split(":");
+                idEmpresa = Integer.parseInt(partes[0]);
+                idUnidade = null; // igual ao fake: o login não guarda unidade
                 usuario = new UsuarioDTO(
-                        1, null, 1,
-                        "Teste",
-                        "teste@example.com",
-                        "(99) 9999-9999",
-                        "SenhaTeste123!",
-                        "COLABORADOR",
+                        Integer.parseInt(partes[1]), // idUsuario
+                        null,                        // idUnidade
+                        idEmpresa,
+                        null, null, null, null, null, // nome, email, telefone, senha, perfil
                         true,
-                        LocalDateTime.now()
+                        null                         // data
                 );
-                idEmpresa = usuario.idEmpresa();
-                idUnidade = usuario.idUnidade();
-
             } else {
                 idEmpresa = form.idEmpresa();
                 idUnidade = form.idUnidade();
@@ -107,7 +107,7 @@ public class ReclamacaoController {
 
         Manifestacao manifestacaoEncontrada = codigoOptional.get();
 
-        return ResponseEntity.ok("Manifestacao encontrada: " + manifestacaoEncontrada);
+        return ResponseEntity.ok(ManifestacaoResumoDTO.de(manifestacaoEncontrada));// <--
     }
 
     @GetMapping("/minhas")
