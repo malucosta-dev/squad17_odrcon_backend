@@ -11,7 +11,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.multipart.MultipartFile; // <--
+import com.auditoria.backend.manifestacao.ManifestacaoResumoDTO;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import java.util.List;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -105,4 +109,34 @@ public class ReclamacaoController {
 
         return ResponseEntity.ok("Manifestacao encontrada: " + manifestacaoEncontrada);
     }
+
+    @GetMapping("/minhas")
+    public ResponseEntity<Object> minhasReclamacoes(Authentication authentication) {
+        if (authentication == null
+                || authentication instanceof AnonymousAuthenticationToken
+                || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        String[] partes = authentication.getName().split(":");
+        if (partes.length != 2) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        try {
+            Integer idEmpresa = Integer.valueOf(partes[0]);
+            Integer idUsuario = Integer.valueOf(partes[1]);
+
+            List<ManifestacaoResumoDTO> lista = manifestacaoRepository
+                    .findByIdSolicitanteAndIdEmpresaOrderByCriadoEmDesc(idUsuario, idEmpresa)
+                    .stream()
+                    .map(ManifestacaoResumoDTO::de)
+                    .toList();
+
+            return ResponseEntity.ok(lista);
+        } catch (NumberFormatException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+    }
+
 }
