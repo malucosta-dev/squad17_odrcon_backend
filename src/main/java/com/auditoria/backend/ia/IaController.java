@@ -45,10 +45,9 @@ public class IaController {
     ) {
         iaRateLimiter.verificarLimite(httpRequest);
 
-        String instrucoes = request.instrucoesRevisor();
-        String textoReformulado = (instrucoes == null || instrucoes.isBlank())
-                ? geminiService.reformularReclamacao(request.textoOriginal())
-                : geminiService.reformularReclamacao(request.textoOriginal(), instrucoes);
+        String textoReformulado = geminiService.reformularReclamacao(
+                request.textoOriginal()
+        );
 
         return ResponseEntity.ok(
                 new ReformulacaoResponse(textoReformulado)

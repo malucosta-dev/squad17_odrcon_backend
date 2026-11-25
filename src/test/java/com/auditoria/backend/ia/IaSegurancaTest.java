@@ -29,7 +29,7 @@ class IaSegurancaTest {
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
-    @Import({ SecurityConfig.class, IaController.class, CsrfController.class })
+    @Import({SecurityConfig.class, IaController.class, CsrfController.class})
     static class Configuracao {
         @Bean
         GeminiService servicoGemini() {
@@ -37,10 +37,8 @@ class IaSegurancaTest {
         }
     }
 
-    @Autowired
-    WebApplicationContext contexto;
-    @Autowired
-    GeminiService servico;
+    @Autowired WebApplicationContext contexto;
+    @Autowired GeminiService servico;
     MockMvc mvc;
 
     @BeforeEach
@@ -57,23 +55,6 @@ class IaSegurancaTest {
                 .content("{\"textoOriginal\":\"Pedido atrasado\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.textoReformulado").value("Solicito uma solucao."));
-    }
-
-    @Test
-    void devePermitirVisitanteComCsrfEInstrucoesOpcionais() throws Exception {
-        when(servico.reformularReclamacao("Pedido atrasado", "Manter em primeira pessoa."))
-                .thenReturn("Solicito uma solucao para o atraso do meu pedido.");
-        mvc.perform(post("/api/ia/reformular").with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {
-                          "textoOriginal": "Pedido atrasado",
-                          "instrucoesRevisor": "Manter em primeira pessoa."
-                        }
-                        """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.textoReformulado")
-                        .value("Solicito uma solucao para o atraso do meu pedido."));
     }
 
     @Test
@@ -128,43 +109,41 @@ class IaSegurancaTest {
 
         for (int i = 0; i < IaRateLimiter.DEFAULT_SESSION_MAX_REQUESTS; i++) {
             mvc.perform(post("/api/ia/reformular")
-                    .session(sessaoAnonima1)
-                    .with(csrf())
-                    .with(req -> {
-                        req.setRemoteAddr(ipCompartilhado);
-                        return req;
-                    })
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"textoOriginal\":\"Relato de teste\"}"))
+                            .session(sessaoAnonima1)
+                            .with(csrf())
+                            .with(req -> {
+                                req.setRemoteAddr(ipCompartilhado);
+                                return req;
+                            })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"textoOriginal\":\"Relato de teste\"}"))
                     .andExpect(status().isOk());
         }
 
-        // A 11ª chamada na mesma sessão anônima recebe 429 Too Many Requests com
-        // Retry-After
+        // A 11ª chamada na mesma sessão anônima recebe 429 Too Many Requests com Retry-After
         mvc.perform(post("/api/ia/reformular")
-                .session(sessaoAnonima1)
-                .with(csrf())
-                .with(req -> {
-                    req.setRemoteAddr(ipCompartilhado);
-                    return req;
-                })
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"textoOriginal\":\"Relato de teste\"}"))
+                        .session(sessaoAnonima1)
+                        .with(csrf())
+                        .with(req -> {
+                            req.setRemoteAddr(ipCompartilhado);
+                            return req;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"textoOriginal\":\"Relato de teste\"}"))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"))
                 .andExpect(jsonPath("$.erro").exists());
 
-        // Outro funcionário anônimo no mesmo IP corporativo (sessaoAnonima2) continua
-        // sendo atendido
+        // Outro funcionário anônimo no mesmo IP corporativo (sessaoAnonima2) continua sendo atendido
         mvc.perform(post("/api/ia/reformular")
-                .session(sessaoAnonima2)
-                .with(csrf())
-                .with(req -> {
-                    req.setRemoteAddr(ipCompartilhado);
-                    return req;
-                })
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"textoOriginal\":\"Relato de teste\"}"))
+                        .session(sessaoAnonima2)
+                        .with(csrf())
+                        .with(req -> {
+                            req.setRemoteAddr(ipCompartilhado);
+                            return req;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"textoOriginal\":\"Relato de teste\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.textoReformulado").value("Relato reformulado."));
     }

@@ -42,23 +42,19 @@ try {
 
 `POST /api/ia/reformular`, com `Content-Type: application/json`:
 
-```json
-{
-  "textoOriginal": "O pedido ficticio 123 atrasou dois dias. Solicito uma solucao.",
-  "instrucoesRevisor": "Manter os fatos e usar linguagem formal em primeira pessoa."
-}
-```
-
-Resposta de sucesso:
+Entrada:
 
 ```json
-{
-  "textoReformulado": "Texto reformulado pelo Gemini."
-}
+{"textoOriginal":"Texto da reclamação"}
 ```
 
-- `textoOriginal`: obrigatorio, ate 5000 caracteres.
-- `instrucoesRevisor`: opcional (aceita ausencia, `null` ou vazio), ate 1000 caracteres. Quando informado, aplica-se exclusivamente a ajustes de apresentacao, estilo e formato, sem adicionar fatos e sem substituir as regras permanentes do sistema.
+Saida:
+
+```json
+{"textoReformulado":"Texto reformulado pela IA"}
+```
+
+- `textoOriginal`: obrigatorio, ate 5000 caracteres. A IA reformula automaticamente qualquer reclamacao valida, preservando estritamente os fatos relatados sem exigir instrucoes ou contexto adicional.
 
 ## Fluxo Anonimo, CSRF e Rate Limiting Restrito ao Modulo de IA
 
@@ -80,9 +76,9 @@ Nenhum IP ou identificador de sessao e gravado em logs ou persistido junto as de
 ## Codigos de Resposta e Erros
 
 - `200 OK`: reformulacao concluida com sucesso.
-- `400 Bad Request`: falha de validacao dos campos de entrada (`textoOriginal` em branco, > 5000 caracteres, ou `instrucoesRevisor` > 1000 caracteres).
+- `400 Bad Request`: falha de validacao do campo de entrada (`textoOriginal` em branco ou > 5000 caracteres).
 - `403 Forbidden`: token CSRF ausente ou invalido.
-- `422 Unprocessable Entity`: bloqueio pelos filtros de seguranca da IA (`promptFeedback.blockReason` ou `candidate.finishReason`), entrada sem relato de reclamacao valido ou bloqueio defensivo de saida.
+- `422 Unprocessable Content`: bloqueio pelos filtros de seguranca da IA (`promptFeedback.blockReason` ou `candidate.finishReason`), entrada sem relato de reclamacao valido ou bloqueio defensivo de saida.
 - `429 Too Many Requests`: limite de requisicoes por sessao ou IP atingido (inclui cabecalho `Retry-After`).
 - `502 Bad Gateway`: falha tecnica de comunicacao ou resposta truncada/invalida da API externa.
 - `503 Service Unavailable`: chave `GEMINI_API_KEY` ausente ou indisponibilidade/quota da API externa.
