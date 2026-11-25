@@ -72,20 +72,11 @@ public class IaRateLimiter {
     private final ConcurrentHashMap<String, Deque<Instant>> sessionBuckets = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Deque<Instant>> ipBuckets = new ConcurrentHashMap<>();
 
-    public IaRateLimiter() {
-        this(
-                DEFAULT_SESSION_MAX_REQUESTS,
-                DEFAULT_IP_MAX_REQUESTS,
-                DEFAULT_WINDOW_SECONDS,
-                "",
-                Clock.systemUTC());
-    }
-
     @Autowired
     public IaRateLimiter(
-            @Value("${gemini.ratelimit.session-max-requests:10}") int maxRequestsPerSession,
-            @Value("${gemini.ratelimit.ip-max-requests:60}") int maxRequestsPerIp,
-            @Value("${gemini.ratelimit.window-seconds:60}") long windowSeconds,
+            @Value("${gemini.ratelimit.session-max-requests:" + DEFAULT_SESSION_MAX_REQUESTS + "}") int maxRequestsPerSession,
+            @Value("${gemini.ratelimit.ip-max-requests:" + DEFAULT_IP_MAX_REQUESTS + "}") int maxRequestsPerIp,
+            @Value("${gemini.ratelimit.window-seconds:" + DEFAULT_WINDOW_SECONDS + "}") long windowSeconds,
             @Value("${gemini.ratelimit.trusted-proxies:}") String trustedProxiesConfig) {
         this(
                 maxRequestsPerSession,

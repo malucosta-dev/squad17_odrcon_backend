@@ -29,7 +29,7 @@ class IaSegurancaTest {
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
-    @Import({SecurityConfig.class, IaController.class, CsrfController.class})
+    @Import({SecurityConfig.class, IaController.class, IaRateLimiter.class, CsrfController.class})
     static class Configuracao {
         @Bean
         GeminiService servicoGemini() {
@@ -62,7 +62,8 @@ class IaSegurancaTest {
         mvc.perform(post("/api/ia/reformular")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"textoOriginal\":\"Pedido atrasado\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("IA_CSRF_INVALIDO"));
         verifyNoInteractions(servico);
     }
 

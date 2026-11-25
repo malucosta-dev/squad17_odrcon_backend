@@ -2,7 +2,6 @@ package com.auditoria.backend.ia;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
@@ -26,6 +25,28 @@ class IaControllerTest {
         iaRateLimiter = new IaRateLimiter(3, 10, 60, "10.0.0.1", Clock.systemUTC());
         IaController controller = new IaController(geminiService, iaRateLimiter);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @Test
+    void deveUsarMesmoCodigoParaJsonMalformado() throws Exception {
+        mockMvc.perform(post("/api/ia/reformular")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("IA_ENTRADA_INVALIDA"));
+    }
+
+    @Test
+    void deveRetornarFalhaSemSugestaoQuandoGeminiEstiverIndisponivel() throws Exception {
+        when(geminiService.reformularReclamacao(anyString()))
+                .thenThrow(new IaIntegracaoException(IaErro.GEMINI_INDISPONIVEL));
+
+        mockMvc.perform(post("/api/ia/reformular")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"textoOriginal\":\"Meu pedido atrasou.\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.codigo").value("GEMINI_INDISPONIVEL"))
+                .andExpect(jsonPath("$.textoReformulado").doesNotExist());
     }
 
     @Test
@@ -82,10 +103,7 @@ class IaControllerTest {
     @Test
     void deveRetornarGatewayTimeoutQuandoApiExternaExcederTempoLimite() throws Exception {
         when(geminiService.reformularReclamacao(anyString()))
-                .thenThrow(new IaIntegracaoException(
-                        HttpStatus.GATEWAY_TIMEOUT,
-                        "Tempo limite excedido ao comunicar com a API do Gemini."
-                ));
+                .thenThrow(new IaIntegracaoException(IaErro.GEMINI_TIMEOUT));
 
         String payload = """
                 {
@@ -97,6 +115,7 @@ class IaControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isGatewayTimeout())
+                .andExpect(jsonPath("$.codigo").value("GEMINI_TIMEOUT"))
                 .andExpect(jsonPath("$.erro")
                         .value("Tempo limite excedido ao comunicar com a API do Gemini."));
     }

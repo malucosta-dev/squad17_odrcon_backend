@@ -4,20 +4,19 @@ import org.springframework.http.HttpStatus;
 
 public class IaIntegracaoException extends RuntimeException {
 
-    private final HttpStatus status;
+    private final IaErro codigo;
 
-    public IaIntegracaoException(HttpStatus status, String message) {
-        super(message);
-        this.status = status;
+    IaIntegracaoException(IaErro codigo) {
+        super(codigo.mensagem);
+        this.codigo = codigo;
     }
 
-    public IaIntegracaoException(HttpStatus status, String message, Throwable cause) {
-        super(message, cause);
-        this.status = status;
+    IaErro getCodigo() {
+        return codigo;
     }
 
     public HttpStatus getStatus() {
-        return status;
+        return codigo.status;
     }
 }
 
