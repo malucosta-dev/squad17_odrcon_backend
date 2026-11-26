@@ -1,11 +1,6 @@
 package com.auditoria.backend.manifestacao;
 
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -64,7 +59,7 @@ public class Manifestacao {
     @Column(name = "avaliacao_nota")
     private Integer avaliacaoNota;
 
-    @Column(name = "criado_em", nullable = false)
+    @Column(name = "criado_em", nullable = false, updatable = false)
     private LocalDateTime criadoEm;
 
     @Column(name = "atualizado_em", nullable = false)
@@ -85,8 +80,25 @@ public class Manifestacao {
     @Column(name = "nivel_gravidade", length = 30)
     private String nivelGravidade;
 
+    // Cria e atualiza o datetime automaticamente
+    @PrePersist
+    protected void onCreate() {
+        LocalDateTime agora = LocalDateTime.now();
+        if (this.criadoEm == null) {
+            this.criadoEm = agora;
+        }
+        if (this.atualizadoEm == null) {
+            this.atualizadoEm = agora;
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.atualizadoEm = LocalDateTime.now();
+    }
+
+    // Construtores
     public Manifestacao() {
-        // exigido pelo JPA
     }
 
     public Manifestacao(Integer idManifestacao, Integer idUnidade, Integer idEmpresa, Integer idSolicitante, Integer idResponsavel, String tipo, String status, String prioridade, String descricaoOriginal, String descricaoTratada, String dadosEstruturados, LocalDateTime prazoResposta, Integer nivelEscalonamento, String avaliacaoResultado, Integer avaliacaoNota, LocalDateTime criadoEm, LocalDateTime atualizadoEm, String canal, String protocoloUnico, Boolean anonimo, String statusProcessamento, String nivelGravidade) {
@@ -114,6 +126,7 @@ public class Manifestacao {
         this.nivelGravidade = nivelGravidade;
     }
 
+    // Getters
     public Integer getIdManifestacao() { return idManifestacao; }
     public Integer getIdUnidade() { return idUnidade; }
     public Integer getIdEmpresa() { return idEmpresa; }
@@ -136,4 +149,8 @@ public class Manifestacao {
     public Boolean getAnonimo() { return anonimo; }
     public String getStatusProcessamento() { return statusProcessamento; }
     public String getNivelGravidade() { return nivelGravidade; }
+
+
+    // Setters
+    public void setStatus(String status) {this.status = status;}
 }

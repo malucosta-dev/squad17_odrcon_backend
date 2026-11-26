@@ -1,10 +1,13 @@
 package com.auditoria.backend.reclamacao.reclamacaoController;
 
+import com.auditoria.backend.anexo.AnexoService;
 import com.auditoria.backend.manifestacao.Manifestacao;
 import com.auditoria.backend.manifestacao.ManifestacaoRepository;
 import com.auditoria.backend.reclamacao.reclamacaoService.DuplicidadeService;//Conecta com o detector de duplicata
 import com.auditoria.backend.reclamacao.reclamacaoDTO.ReclamacaoDTO;
 import com.auditoria.backend.reclamacao.reclamacaoDTO.ReclamacaoFormDTO;
+import com.auditoria.backend.solucao.Proposta_solucao;
+import com.auditoria.backend.solucao.Proposta_solucaoRepository;
 import com.auditoria.backend.usuario.usuarioDTO.UsuarioDTO;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,9 +24,15 @@ import java.util.Optional;
 @CrossOrigin(origins = "http://localhost:5173")
 public class ReclamacaoController {
 
-    // Manifestacao repository
+    // Repository
     @Autowired
     private ManifestacaoRepository manifestacaoRepository;
+
+    @Autowired
+    private Proposta_solucaoRepository solucaoRepository;
+
+    @Autowired
+    private AnexoService anexoService;
 
     //Guarda o service no controller
     private final DuplicidadeService duplicidadeService;
@@ -35,6 +44,7 @@ public class ReclamacaoController {
         @PostMapping
         @Transactional
         public ResponseEntity<String> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO form) {
+            anexoService.validar(form.arquivo());//Barra arquivo invalido antes de registrar a reclamacao
             duplicidadeService.validarERegistrar(form.reclamacao());//Barra reclamacao repetida (devolve 409)
 
             Integer idEmpresa = 0;
@@ -63,14 +73,15 @@ public class ReclamacaoController {
 
             ReclamacaoDTO resposta = new ReclamacaoDTO(usuario, form);
 
-            manifestacaoRepository.save(new Manifestacao(
-                    null,                                          // 1. idManifestacao (gerado pelo banco)
+            // SALVANDO RECLAMACAO DO USUARIO
+            Manifestacao manifestacaoSalva = manifestacaoRepository.save(new Manifestacao(
+                    null,                                          // 1. idManifestacao (obrigatorio | automatico)
                     idUnidade,                                                  // 2. idUnidade
                     idEmpresa,                                                  // 3. idEmpresa (obrigatório)
                     usuario != null ? resposta.usuario().idUsuario() : null,    // 4. idSolicitante
                     null,                                                       // 5. idResponsavel
                     "RECLAMACAO",                                               // 6. tipo (obrigatório)
-                    "ABERTA",                                                   // 7. status (obrigatório)
+                    "RECEBIDO",                                                 // 7. status (obrigatório)
                     null,                                                       // 8. prioridade
                     resposta.form().reclamacao(),                               // 9. descricaoOriginal (obrigatório)
                     null,                                                       // 10. descricaoTratada
@@ -79,14 +90,44 @@ public class ReclamacaoController {
                     0,                                                          // 13. nivelEscalonamento
                     null,                                                       // 14. avaliacaoResultado
                     null,                                                       // 15. avaliacaoNota
-                    LocalDateTime.now(),                                        // 16. criadoEm (obrigatório)
-                    LocalDateTime.now(),                                        // 17. atualizadoEm (obrigatório)
+                    null,                                                       // 16. criadoEm (obrigatório | automatico)
+                    null,                                                       // 17. atualizadoEm (obrigatório | automatico)
                     "WEB",                                                      // 18. canal
                     java.util.UUID.randomUUID().toString(),                     // 19. protocoloUnico (obrigatório)
                     resposta.form().isAnonimo(),                                // 20. anonimo (obrigatório)
                     "PENDENTE",                                                 // 21. statusProcessamento (obrigatório)
                     null                                                        // 22. nivelGravidade
             ));
+
+            // SALVANDO ANEXO DA RECLAMACAO (se veio arquivo)
+            anexoService.salvar(manifestacaoSalva, form.arquivo());
+
+            // SALVANDO PROPOSTA DE SOLUCAO DO USUARIO
+            if (Boolean.TRUE.equals(form.hasSolucao())) {
+                if (Boolean.TRUE.equals(form.hasAcordo())) {
+                    // FLUXO 1: COM SOLUÇÃO E COM ACORDO
+                    solucaoRepository.save(new Proposta_solucao(
+                            null,                               // 1. idProposta (gerado pelo banco)
+                            manifestacaoSalva,                  // 2. manifestacao (FK da manifestação recém-salva)
+                            resposta.form().solucao(),          // 3. descricaoProposta (obrigatório)
+                            true,                               // 4. desejaAcordo
+                            "AGUARDANDO_ACORDO",                // 5. statusProposta (obrigatório)
+                            null,                               // 6. criadoEm (@PrePersist preenche)
+                            null                                // 7. atualizadoEm (@PrePersist preenche)
+                    ));
+                } else {
+                    // FLUXO 2: COM SOLUÇÃO, MAS SEM ACORDO
+                    solucaoRepository.save(new Proposta_solucao(
+                            null,                               // 1. idProposta (gerado pelo banco)
+                            manifestacaoSalva,                  // 2. manifestacao (FK da manifestação recém-salva)
+                            resposta.form().solucao(),          // 3. descricaoProposta (obrigatório)
+                            false,                              // 4. desejaAcordo
+                            "PENDENTE",                         // 5. statusProposta (obrigatório)
+                            null,                               // 6. criadoEm (@PrePersist preenche)
+                            null                                // 7. atualizadoEm (@PrePersist preenche)
+                    ));
+                }
+            }
 
             // Testando se resposta está funcionando
             System.out.println(resposta);
