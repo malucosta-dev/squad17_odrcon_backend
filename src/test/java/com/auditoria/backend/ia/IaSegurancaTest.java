@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,7 +29,7 @@ class IaSegurancaTest {
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
-    @Import({SecurityConfig.class, IaController.class, CsrfController.class})
+    @Import({SecurityConfig.class, IaController.class, IaRateLimiter.class, CsrfController.class})
     static class Configuracao {
         @Bean
         GeminiService servicoGemini() {
@@ -61,7 +62,8 @@ class IaSegurancaTest {
         mvc.perform(post("/api/ia/reformular")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"textoOriginal\":\"Pedido atrasado\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("IA_CSRF_INVALIDO"));
         verifyNoInteractions(servico);
     }
 
@@ -96,5 +98,54 @@ class IaSegurancaTest {
                 .content("{\"textoOriginal\":\"Pedido atrasado\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.textoReformulado").value("Solicito uma solucao."));
+    }
+
+    @Test
+    void deveAplicarRateLimitPorSessaoNoEndpointProtegidoPorCsrfSemBloquearOutraSessaoNoMesmoIp() throws Exception {
+        when(servico.reformularReclamacao("Relato de teste")).thenReturn("Relato reformulado.");
+
+        MockHttpSession sessaoAnonima1 = new MockHttpSession();
+        MockHttpSession sessaoAnonima2 = new MockHttpSession();
+        String ipCompartilhado = "10.20.30.40";
+
+        for (int i = 0; i < IaRateLimiter.DEFAULT_SESSION_MAX_REQUESTS; i++) {
+            mvc.perform(post("/api/ia/reformular")
+                            .session(sessaoAnonima1)
+                            .with(csrf())
+                            .with(req -> {
+                                req.setRemoteAddr(ipCompartilhado);
+                                return req;
+                            })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"textoOriginal\":\"Relato de teste\"}"))
+                    .andExpect(status().isOk());
+        }
+
+        // A 11ª chamada na mesma sessão anônima recebe 429 Too Many Requests com Retry-After
+        mvc.perform(post("/api/ia/reformular")
+                        .session(sessaoAnonima1)
+                        .with(csrf())
+                        .with(req -> {
+                            req.setRemoteAddr(ipCompartilhado);
+                            return req;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"textoOriginal\":\"Relato de teste\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.erro").exists());
+
+        // Outro funcionário anônimo no mesmo IP corporativo (sessaoAnonima2) continua sendo atendido
+        mvc.perform(post("/api/ia/reformular")
+                        .session(sessaoAnonima2)
+                        .with(csrf())
+                        .with(req -> {
+                            req.setRemoteAddr(ipCompartilhado);
+                            return req;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"textoOriginal\":\"Relato de teste\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.textoReformulado").value("Relato reformulado."));
     }
 }

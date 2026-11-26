@@ -1,5 +1,6 @@
 package com.auditoria.backend.auth;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import jakarta.servlet.DispatcherType;
@@ -9,8 +10,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
@@ -37,6 +40,7 @@ public class SecurityConfig {
         boolean desenvolvimento = environment.matchesProfiles("dev");
         var reformulacaoPublica = PathPatternRequestMatcher.withDefaults()
             .matcher(HttpMethod.POST, "/api/ia/reformular");
+        var acessoNegadoPadrao = new AccessDeniedHandlerImpl();
 
         http
             .securityContext(context ->
@@ -88,9 +92,20 @@ public class SecurityConfig {
             })
 
             .exceptionHandling(exceptions ->
-                exceptions.authenticationEntryPoint(
-                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)
-                )
+                exceptions
+                    .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                    .accessDeniedHandler((request, response, exception) -> {
+                        if (!reformulacaoPublica.matches(request)) {
+                            acessoNegadoPadrao.handle(request, response, exception);
+                            return;
+                        }
+                        response.setStatus(HttpStatus.FORBIDDEN.value());
+                        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                        response.getWriter().write("""
+                            {"codigo":"IA_CSRF_INVALIDO","erro":"Token de segurança inválido. Tente novamente."}
+                            """);
+                    })
             )
 
             .logout(logout -> logout

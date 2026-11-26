@@ -2,10 +2,12 @@ package com.auditoria.backend.ia;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.time.Clock;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -14,13 +16,37 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class IaControllerTest {
 
     private GeminiService geminiService;
+    private IaRateLimiter iaRateLimiter;
     private MockMvc mockMvc;
 
     @BeforeEach
     void configurar() {
         geminiService = mock(GeminiService.class);
-        IaController controller = new IaController(geminiService);
+        iaRateLimiter = new IaRateLimiter(3, 10, 60, "10.0.0.1", Clock.systemUTC());
+        IaController controller = new IaController(geminiService, iaRateLimiter);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @Test
+    void deveUsarMesmoCodigoParaJsonMalformado() throws Exception {
+        mockMvc.perform(post("/api/ia/reformular")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("IA_ENTRADA_INVALIDA"));
+    }
+
+    @Test
+    void deveRetornarFalhaSemSugestaoQuandoGeminiEstiverIndisponivel() throws Exception {
+        when(geminiService.reformularReclamacao(anyString()))
+                .thenThrow(new IaIntegracaoException(IaErro.GEMINI_INDISPONIVEL));
+
+        mockMvc.perform(post("/api/ia/reformular")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"textoOriginal\":\"Meu pedido atrasou.\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.codigo").value("GEMINI_INDISPONIVEL"))
+                .andExpect(jsonPath("$.textoReformulado").doesNotExist());
     }
 
     @Test
@@ -77,10 +103,7 @@ class IaControllerTest {
     @Test
     void deveRetornarGatewayTimeoutQuandoApiExternaExcederTempoLimite() throws Exception {
         when(geminiService.reformularReclamacao(anyString()))
-                .thenThrow(new IaIntegracaoException(
-                        HttpStatus.GATEWAY_TIMEOUT,
-                        "Tempo limite excedido ao comunicar com a API do Gemini."
-                ));
+                .thenThrow(new IaIntegracaoException(IaErro.GEMINI_TIMEOUT));
 
         String payload = """
                 {
@@ -92,8 +115,86 @@ class IaControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isGatewayTimeout())
+                .andExpect(jsonPath("$.codigo").value("GEMINI_TIMEOUT"))
                 .andExpect(jsonPath("$.erro")
                         .value("Tempo limite excedido ao comunicar com a API do Gemini."));
     }
-}
 
+    @Test
+    void deveRetornar429ComRetryAfterQuandoSessaoExcederRateLimitSemBloquearOutroUsuarioNoMesmoIp() throws Exception {
+        when(geminiService.reformularReclamacao(anyString()))
+                .thenReturn("Texto reformulado com sucesso.");
+
+        MockHttpSession sessaoFuncionarioA = new MockHttpSession();
+        MockHttpSession sessaoFuncionarioB = new MockHttpSession();
+        String ipCorporativoCompartilhado = "192.168.10.25";
+        String payload = "{\"textoOriginal\":\"Relato de problema no setor.\"}";
+
+        // Funcionário A atinge o limite de 3 requisições da própria sessão
+        for (int i = 0; i < 3; i++) {
+            mockMvc.perform(post("/api/ia/reformular")
+                            .session(sessaoFuncionarioA)
+                            .with(req -> {
+                                req.setRemoteAddr(ipCorporativoCompartilhado);
+                                return req;
+                            })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(payload))
+                    .andExpect(status().isOk());
+        }
+
+        // 4ª requisição do Funcionário A recebe HTTP 429 Too Many Requests com header Retry-After
+        mockMvc.perform(post("/api/ia/reformular")
+                        .session(sessaoFuncionarioA)
+                        .with(req -> {
+                            req.setRemoteAddr(ipCorporativoCompartilhado);
+                            return req;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.erro").exists());
+
+        // Funcionário B, compartilhando o mesmo IP corporativo mas em outra sessão, NÃO é bloqueado
+        mockMvc.perform(post("/api/ia/reformular")
+                        .session(sessaoFuncionarioB)
+                        .with(req -> {
+                            req.setRemoteAddr(ipCorporativoCompartilhado);
+                            return req;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.textoReformulado").value("Texto reformulado com sucesso."));
+    }
+
+    @Test
+    void deveIgnorarXForwardedForDeOrigemNaoConfiavelERespeitarDeProxyConfiavel() {
+        MockHttpSession sessao = new MockHttpSession();
+
+        org.springframework.mock.web.MockHttpServletRequest reqNaoConfiavel =
+                new org.springframework.mock.web.MockHttpServletRequest();
+        reqNaoConfiavel.setSession(sessao);
+        reqNaoConfiavel.setRemoteAddr("203.0.113.50");
+        reqNaoConfiavel.addHeader("X-Forwarded-For", "198.51.100.1");
+
+        // Origem não está em trustedProxies (10.0.0.1), portanto deve ignorar o X-Forwarded-For forjado
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "203.0.113.50",
+                iaRateLimiter.extrairIpCliente(reqNaoConfiavel)
+        );
+
+        // Quando a requisição vem do proxy confiável (10.0.0.1), extrai o IP real encaminhado
+        org.springframework.mock.web.MockHttpServletRequest reqProxyConfiavel =
+                new org.springframework.mock.web.MockHttpServletRequest();
+        reqProxyConfiavel.setSession(sessao);
+        reqProxyConfiavel.setRemoteAddr("10.0.0.1");
+        reqProxyConfiavel.addHeader("X-Forwarded-For", "198.51.100.77, 10.0.0.1");
+
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "198.51.100.77",
+                iaRateLimiter.extrairIpCliente(reqProxyConfiavel)
+        );
+    }
+}
