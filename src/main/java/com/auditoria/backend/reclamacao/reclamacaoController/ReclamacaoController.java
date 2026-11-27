@@ -1,30 +1,29 @@
 package com.auditoria.backend.reclamacao.reclamacaoController;
 
 import com.auditoria.backend.anexo.AnexoService;
+import com.auditoria.backend.auth.Usuario;
+import com.auditoria.backend.auth.UsuarioRepository;
 import com.auditoria.backend.manifestacao.Manifestacao;
 import com.auditoria.backend.manifestacao.ManifestacaoRepository;
-import com.auditoria.backend.reclamacao.reclamacaoService.DuplicidadeService;//Conecta com o detector de duplicata
-import com.auditoria.backend.reclamacao.reclamacaoDTO.ReclamacaoDTO;
 import com.auditoria.backend.reclamacao.reclamacaoDTO.ReclamacaoFormDTO;
+import com.auditoria.backend.reclamacao.reclamacaoService.DuplicidadeService;
 import com.auditoria.backend.solucao.Proposta_solucao;
 import com.auditoria.backend.solucao.Proposta_solucaoRepository;
-import com.auditoria.backend.usuario.usuarioDTO.UsuarioDTO;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/reclamacao")
 @CrossOrigin(origins = "http://localhost:5173")
 public class ReclamacaoController {
 
-    // Repository
     @Autowired
     private ManifestacaoRepository manifestacaoRepository;
 
@@ -32,118 +31,141 @@ public class ReclamacaoController {
     private Proposta_solucaoRepository solucaoRepository;
 
     @Autowired
+    private UsuarioRepository usuarioRepository;
+
+    @Autowired
     private AnexoService anexoService;
 
-    //Guarda o service no controller
     private final DuplicidadeService duplicidadeService;
 
     public ReclamacaoController(DuplicidadeService duplicidadeService) {
         this.duplicidadeService = duplicidadeService;
     }
 
-        @PostMapping
-        @Transactional
-        public ResponseEntity<String> fazerReclamacao(@ModelAttribute ReclamacaoFormDTO form) {
-            anexoService.validar(form.arquivo());//Barra arquivo invalido antes de registrar a reclamacao
-            duplicidadeService.validarERegistrar(form.reclamacao());//Barra reclamacao repetida (devolve 409)
+    @PostMapping
+    @Transactional
+    public ResponseEntity<String> fazerReclamacao(
+            @ModelAttribute ReclamacaoFormDTO form,
+            Authentication authentication
+    ) {
+        if (form.isAnonimo() == null) {
+            return ResponseEntity.badRequest().body("Informe se o envio é anônimo.");
+        }
 
-            Integer idEmpresa = 0;
-            Integer idUnidade = 0;
+        boolean anonimo = Boolean.TRUE.equals(form.isAnonimo());
+        Integer idEmpresa = form.idEmpresa();
+        Integer idUnidade = form.idUnidade();
+        Integer idSolicitante = null;
 
-            // Usuario fake. Precisamos de um jeito de identificar o usuario logado.
-            UsuarioDTO usuario = null;
-            if (Boolean.FALSE.equals(form.isAnonimo())) {
-                usuario = new UsuarioDTO(
-                        1, null, 1,
-                        "Teste",
-                        "teste@example.com",
-                        "(99) 9999-9999",
-                        "SenhaTeste123!",
-                        "COLABORADOR",
-                        true,
-                        LocalDateTime.now()
-                );
-                idEmpresa = usuario.idEmpresa();
-                idUnidade = usuario.idUnidade();
-
-            } else {
-                idEmpresa = form.idEmpresa();
-                idUnidade = form.idUnidade();
+        if (!anonimo) {
+            if (authentication == null || !authentication.isAuthenticated()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body("Faça login para enviar uma reclamação identificada.");
             }
 
-            ReclamacaoDTO resposta = new ReclamacaoDTO(usuario, form);
-
-            // SALVANDO RECLAMACAO DO USUARIO
-            Manifestacao manifestacaoSalva = manifestacaoRepository.save(new Manifestacao(
-                    null,                                          // 1. idManifestacao (obrigatorio | automatico)
-                    idUnidade,                                                  // 2. idUnidade
-                    idEmpresa,                                                  // 3. idEmpresa (obrigatório)
-                    usuario != null ? resposta.usuario().idUsuario() : null,    // 4. idSolicitante
-                    null,                                                       // 5. idResponsavel
-                    "RECLAMACAO",                                               // 6. tipo (obrigatório)
-                    "RECEBIDO",                                                 // 7. status (obrigatório)
-                    null,                                                       // 8. prioridade
-                    resposta.form().reclamacao(),                               // 9. descricaoOriginal (obrigatório)
-                    null,                                                       // 10. descricaoTratada
-                    null,                                                       // 11. dadosEstruturados
-                    null,                                                       // 12. prazoResposta
-                    0,                                                          // 13. nivelEscalonamento
-                    null,                                                       // 14. avaliacaoResultado
-                    null,                                                       // 15. avaliacaoNota
-                    null,                                                       // 16. criadoEm (obrigatório | automatico)
-                    null,                                                       // 17. atualizadoEm (obrigatório | automatico)
-                    "WEB",                                                      // 18. canal
-                    java.util.UUID.randomUUID().toString(),                     // 19. protocoloUnico (obrigatório)
-                    resposta.form().isAnonimo(),                                // 20. anonimo (obrigatório)
-                    "PENDENTE",                                                 // 21. statusProcessamento (obrigatório)
-                    null                                                        // 22. nivelGravidade
-            ));
-
-            // SALVANDO ANEXO DA RECLAMACAO (se veio arquivo)
-            anexoService.salvar(manifestacaoSalva, form.arquivo());
-
-            // SALVANDO PROPOSTA DE SOLUCAO DO USUARIO
-            if (Boolean.TRUE.equals(form.hasSolucao())) {
-                if (Boolean.TRUE.equals(form.hasAcordo())) {
-                    // FLUXO 1: COM SOLUÇÃO E COM ACORDO
-                    solucaoRepository.save(new Proposta_solucao(
-                            null,                               // 1. idProposta (gerado pelo banco)
-                            manifestacaoSalva,                  // 2. manifestacao (FK da manifestação recém-salva)
-                            resposta.form().solucao(),          // 3. descricaoProposta (obrigatório)
-                            true,                               // 4. desejaAcordo
-                            "AGUARDANDO_ACORDO",                // 5. statusProposta (obrigatório)
-                            null,                               // 6. criadoEm (@PrePersist preenche)
-                            null                                // 7. atualizadoEm (@PrePersist preenche)
-                    ));
-                } else {
-                    // FLUXO 2: COM SOLUÇÃO, MAS SEM ACORDO
-                    solucaoRepository.save(new Proposta_solucao(
-                            null,                               // 1. idProposta (gerado pelo banco)
-                            manifestacaoSalva,                  // 2. manifestacao (FK da manifestação recém-salva)
-                            resposta.form().solucao(),          // 3. descricaoProposta (obrigatório)
-                            false,                              // 4. desejaAcordo
-                            "PENDENTE",                         // 5. statusProposta (obrigatório)
-                            null,                               // 6. criadoEm (@PrePersist preenche)
-                            null                                // 7. atualizadoEm (@PrePersist preenche)
-                    ));
-                }
+            // A sessão da ODRCON identifica o usuário como empresa:usuario.
+            String[] identificacao = authentication.getName().split(":", -1);
+            if (identificacao.length != 2) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body("Sessão inválida. Faça login novamente.");
             }
 
-            // Testando se resposta está funcionando
-            System.out.println(resposta);
+            Integer idEmpresaSessao;
+            Integer idUsuarioSessao;
+            try {
+                idEmpresaSessao = Integer.valueOf(identificacao[0]);
+                idUsuarioSessao = Integer.valueOf(identificacao[1]);
+            } catch (NumberFormatException exception) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body("Sessão inválida. Faça login novamente.");
+            }
 
-            return ResponseEntity.status(HttpStatus.CREATED).body("Reclamacao criada com sucesso.");
+            Optional<Usuario> usuarioOpt = usuarioRepository.findById(idUsuarioSessao)
+                    .filter(usuario -> idEmpresaSessao.equals(usuario.getIdEmpresa()))
+                    .filter(usuario -> Boolean.TRUE.equals(usuario.getAtivo()));
+
+            if (usuarioOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body("Sessão inválida. Faça login novamente.");
+            }
+
+            Usuario usuario = usuarioOpt.get();
+            idEmpresa = usuario.getIdEmpresa();
+            idUnidade = usuario.getIdUnidade();
+            idSolicitante = usuario.getIdUsuario();
+        }
+
+        if (idEmpresa == null || idEmpresa <= 0) {
+            return ResponseEntity.badRequest().body("Selecione uma empresa válida.");
+        }
+
+        boolean temSolucao = Boolean.TRUE.equals(form.hasSolucao());
+        if (temSolucao && (form.solucao() == null || form.solucao().isBlank())) {
+            return ResponseEntity.badRequest().body("Informe a solução proposta.");
+        }
+
+        anexoService.validar(form.arquivo());
+        duplicidadeService.validarERegistrar(form.reclamacao());
+
+        Manifestacao manifestacaoSalva = manifestacaoRepository.save(new Manifestacao(
+                null,                         // idManifestacao
+                idUnidade,                    // idUnidade
+                idEmpresa,                    // idEmpresa
+                idSolicitante,                // idSolicitante
+                null,                         // idResponsavel
+                "RECLAMACAO",                 // tipo
+                "RECEBIDO",                   // status
+                null,                         // prioridade
+                form.reclamacao(),            // descricaoOriginal
+                null,                         // descricaoTratada
+                null,                         // dadosEstruturados
+                null,                         // prazoResposta
+                0,                            // nivelEscalonamento
+                null,                         // avaliacaoResultado
+                null,                         // avaliacaoNota
+                null,                         // criadoEm
+                null,                         // atualizadoEm
+                "WEB",                        // canal
+                UUID.randomUUID().toString(), // protocoloUnico
+                anonimo,                      // anonimo
+                "PENDENTE",                   // statusProcessamento
+                null                          // nivelGravidade
+        ));
+
+        anexoService.salvar(manifestacaoSalva, form.arquivo());
+
+        if (temSolucao) {
+            boolean desejaAcordo = Boolean.TRUE.equals(form.hasAcordo());
+
+            Proposta_solucao proposta = new Proposta_solucao(
+                    null,
+                    manifestacaoSalva,
+                    form.solucao(),
+                    desejaAcordo,
+                    desejaAcordo ? "AGUARDANDO_ACORDO" : "PENDENTE",
+                    null,
+                    null
+            );
+
+            proposta.registrarAutoria(idSolicitante, "SOLICITANTE");
+            solucaoRepository.save(proposta);
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body("Reclamacao criada com sucesso.");
     }
 
     @GetMapping("/protocolo/{codigo}")
-    public ResponseEntity<Object> procurarReclamacao(@PathVariable String codigo){
-        Optional<Manifestacao> codigoOptional = manifestacaoRepository.findByProtocoloUnico(codigo);
-        if (codigoOptional.isEmpty()){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Protocolo não encontrado.");
+    public ResponseEntity<Object> procurarReclamacao(@PathVariable String codigo) {
+        Optional<Manifestacao> codigoOptional =
+                manifestacaoRepository.findByProtocoloUnico(codigo);
+
+        if (codigoOptional.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Protocolo não encontrado.");
         }
 
         Manifestacao manifestacaoEncontrada = codigoOptional.get();
-
         return ResponseEntity.ok("Manifestacao encontrada: " + manifestacaoEncontrada);
     }
 }
