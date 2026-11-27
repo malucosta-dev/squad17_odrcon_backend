@@ -1,19 +1,18 @@
-package com.auditoria.backend.solucao; // Ajuste o pacote conforme a estrutura do seu projeto
+package com.auditoria.backend.solucao;
 
-import com.auditoria.backend.manifestacao.Manifestacao; // Ajuste o import da sua entidade Manifestacao
+import com.auditoria.backend.manifestacao.Manifestacao;
 import jakarta.persistence.*;
+
 import java.time.LocalDateTime;
 
 @Entity
 @Table(
         name = "proposta_solucao",
         schema = "public",
-        uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uq_proposta_manifestacao_termo",
-                        columnNames = {"id_proposta", "id_manifestacao"}
-                )
-        }
+        uniqueConstraints = @UniqueConstraint(
+                name = "uq_proposta_manifestacao_termo",
+                columnNames = {"id_proposta", "id_manifestacao"}
+        )
 )
 public class Proposta_solucao {
 
@@ -29,6 +28,12 @@ public class Proposta_solucao {
             foreignKey = @ForeignKey(name = "fk_proposta_manifestacao")
     )
     private Manifestacao manifestacao;
+
+    @Column(name = "id_autor")
+    private Integer idAutor;
+
+    @Column(name = "origem_proposta", length = 20)
+    private String origemProposta;
 
     @Column(name = "descricao_proposta", columnDefinition = "TEXT", nullable = false)
     private String descricaoProposta;
@@ -48,27 +53,35 @@ public class Proposta_solucao {
     @PrePersist
     protected void onCreate() {
         LocalDateTime agora = LocalDateTime.now();
-        if (this.criadoEm == null) {
-            this.criadoEm = agora;
+
+        if (criadoEm == null) {
+            criadoEm = agora;
         }
-        if (this.atualizadoEm == null) {
-            this.atualizadoEm = agora;
+        if (atualizadoEm == null) {
+            atualizadoEm = agora;
         }
-        if (this.statusProposta == null || this.statusProposta.isBlank()) {
-            this.statusProposta = "PENDENTE";
+        if (statusProposta == null || statusProposta.isBlank()) {
+            statusProposta = "PENDENTE";
         }
     }
 
     @PreUpdate
     protected void onUpdate() {
-        this.atualizadoEm = LocalDateTime.now();
+        atualizadoEm = LocalDateTime.now();
     }
 
-    // --- Construtores ---
     public Proposta_solucao() {
     }
 
-    public Proposta_solucao(Integer idProposta, Manifestacao manifestacao, String descricaoProposta, Boolean desejaAcordo, String statusProposta, LocalDateTime criadoEm, LocalDateTime atualizadoEm) {
+    public Proposta_solucao(
+            Integer idProposta,
+            Manifestacao manifestacao,
+            String descricaoProposta,
+            Boolean desejaAcordo,
+            String statusProposta,
+            LocalDateTime criadoEm,
+            LocalDateTime atualizadoEm
+    ) {
         this.idProposta = idProposta;
         this.manifestacao = manifestacao;
         this.descricaoProposta = descricaoProposta;
@@ -78,7 +91,6 @@ public class Proposta_solucao {
         this.atualizadoEm = atualizadoEm;
     }
 
-    // --- Getters e Setters ---
     public Integer getIdProposta() {
         return idProposta;
     }
@@ -93,6 +105,19 @@ public class Proposta_solucao {
 
     public void setManifestacao(Manifestacao manifestacao) {
         this.manifestacao = manifestacao;
+    }
+
+    public Integer getIdAutor() {
+        return idAutor;
+    }
+
+    public String getOrigemProposta() {
+        return origemProposta;
+    }
+
+    public void registrarAutoria(Integer idAutor, String origemProposta) {
+        this.idAutor = idAutor;
+        this.origemProposta = origemProposta;
     }
 
     public String getDescricaoProposta() {

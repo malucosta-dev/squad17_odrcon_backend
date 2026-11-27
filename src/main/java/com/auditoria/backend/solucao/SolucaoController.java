@@ -1,137 +1,277 @@
 package com.auditoria.backend.solucao;
 
+import com.auditoria.backend.auth.Usuario;
+import com.auditoria.backend.auth.UsuarioRepository;
 import com.auditoria.backend.manifestacao.Manifestacao;
 import com.auditoria.backend.manifestacao.ManifestacaoRepository;
-import com.auditoria.backend.solucao.Proposta_solucao;
-import com.auditoria.backend.solucao.Proposta_solucaoRepository;
 import com.auditoria.backend.solucao.solucaoDTO.CriarSolucaoDTO;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/solucoes")
 @CrossOrigin(origins = "http://localhost:5173")
 public class SolucaoController {
 
-    @Autowired
-    private Proposta_solucaoRepository solucaoRepository;
+    private static final Set<String> PERFIS_EQUIPE = Set.of(
+            "ROLE_ADMIN",
+            "ROLE_RESPONSAVEL",
+            "ROLE_COLABORADOR"
+    );
 
-    @Autowired
-    private ManifestacaoRepository manifestacaoRepository;
+    private final Proposta_solucaoRepository solucaoRepository;
+    private final ManifestacaoRepository manifestacaoRepository;
+    private final UsuarioRepository usuarioRepository;
 
-    // 1. POST: Cria uma nova proposta de solução para uma reclamação específica
+    public SolucaoController(
+            Proposta_solucaoRepository solucaoRepository,
+            ManifestacaoRepository manifestacaoRepository,
+            UsuarioRepository usuarioRepository
+    ) {
+        this.solucaoRepository = solucaoRepository;
+        this.manifestacaoRepository = manifestacaoRepository;
+        this.usuarioRepository = usuarioRepository;
+    }
+
+    public record PropostaResumo(
+            Integer idProposta,
+            String descricaoProposta,
+            Boolean desejaAcordo,
+            String statusProposta,
+            String autorExibicao
+    ) {}
+
     @PostMapping("/reclamacao/{idManifestacao}")
     @Transactional
     public ResponseEntity<String> criarProposta(
             @PathVariable Integer idManifestacao,
-            @RequestBody CriarSolucaoDTO dto
+            @RequestBody CriarSolucaoDTO dto,
+            Authentication authentication
     ) {
-        // TODO: Futuramente identificar quem está propondo a solução (SOLICITANTE vs EMPRESA) via usuário autenticado
-
-        // Regra 5: Validação de texto vazio
         if (dto.descricaoProposta() == null || dto.descricaoProposta().isBlank()) {
-            return ResponseEntity.badRequest().body("A descrição da proposta é obrigatória.");
+            return ResponseEntity.badRequest()
+                    .body("A descrição da proposta é obrigatória.");
         }
 
-        Optional<Manifestacao> manifestacaoOpt = manifestacaoRepository.findById(idManifestacao);
+        Optional<Usuario> autorOpt = usuarioDaSessao(authentication);
+        if (autorOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Faça login para enviar uma proposta.");
+        }
+
+        Usuario autor = autorOpt.get();
+        Optional<Manifestacao> manifestacaoOpt =
+                buscarManifestacaoDaEmpresa(idManifestacao, autor);
+
         if (manifestacaoOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Reclamação não encontrada.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Reclamação não encontrada.");
         }
 
         Manifestacao manifestacao = manifestacaoOpt.get();
+        boolean solicitante = ehSolicitante(autor, manifestacao);
 
-        // Regra 4: Bloqueio de novas propostas se a reclamação já estiver RESOLVIDA
+        if (!solicitante && !ehEquipe(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body("Você não pode propor uma solução para esta reclamação.");
+        }
+
         if ("RESOLVIDA".equalsIgnoreCase(manifestacao.getStatus())) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body("Não é possível propor soluções para uma reclamação já resolvida.");
         }
 
-        boolean desejaAcordo = Boolean.TRUE.equals(dto.desejaAcordo());
-
-        Proposta_solucao novaProposta = new Proposta_solucao(
-                null,                       // 1. idProposta (gerado pelo banco)
-                manifestacao,               // 2. manifestacao (FK da reclamação)
-                dto.descricaoProposta(),    // 3. descricaoProposta
-                desejaAcordo,               // 4. desejaAcordo
-                "PENDENTE",                 // 5. statusProposta
-                null,                       // 6. criadoEm (@PrePersist preenche)
-                null                        // 7. atualizadoEm (@PrePersist preenche)
+        Proposta_solucao proposta = new Proposta_solucao(
+                null,
+                manifestacao,
+                dto.descricaoProposta(),
+                Boolean.TRUE.equals(dto.desejaAcordo()),
+                "PENDENTE",
+                null,
+                null
         );
 
-        solucaoRepository.save(novaProposta);
+        proposta.registrarAutoria(
+                autor.getIdUsuario(),
+                solicitante ? "SOLICITANTE" : "EQUIPE"
+        );
+        solucaoRepository.save(proposta);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body("Proposta de solução criada com sucesso.");
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body("Proposta de solução criada com sucesso.");
     }
 
-    // 2. PATCH: Recusa uma proposta de solução (válido tanto para solicitante quanto para empresa)
+    @GetMapping("/reclamacao/{idManifestacao}")
+    @Transactional
+    public ResponseEntity<List<PropostaResumo>> listarPropostas(
+            @PathVariable Integer idManifestacao,
+            Authentication authentication
+    ) {
+        Optional<Usuario> usuarioOpt = usuarioDaSessao(authentication);
+        if (usuarioOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Usuario usuario = usuarioOpt.get();
+        Optional<Manifestacao> manifestacaoOpt =
+                buscarManifestacaoDaEmpresa(idManifestacao, usuario);
+
+        if (manifestacaoOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Manifestacao manifestacao = manifestacaoOpt.get();
+        if (!ehSolicitante(usuario, manifestacao) && !ehEquipe(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        List<PropostaResumo> propostas = solucaoRepository
+                .findByManifestacao_IdManifestacao(idManifestacao)
+                .stream()
+                .map(proposta -> new PropostaResumo(
+                        proposta.getIdProposta(),
+                        proposta.getDescricaoProposta(),
+                        proposta.getDesejaAcordo(),
+                        proposta.getStatusProposta(),
+                        autorExibicao(proposta, manifestacao)
+                ))
+                .toList();
+
+        return ResponseEntity.ok(propostas);
+    }
+
     @PatchMapping("/{idProposta}/recusar")
     @Transactional
     public ResponseEntity<String> recusarProposta(@PathVariable Integer idProposta) {
         Optional<Proposta_solucao> propostaOpt = solucaoRepository.findById(idProposta);
         if (propostaOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Proposta de solução não encontrada.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Proposta de solução não encontrada.");
         }
 
         Proposta_solucao proposta = propostaOpt.get();
-
-        // Regra 1: Bloqueio de decisão repetida
-        if ("ACEITA".equalsIgnoreCase(proposta.getStatusProposta()) || "RECUSADA".equalsIgnoreCase(proposta.getStatusProposta())) {
+        if (propostaFinalizada(proposta)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body("Esta proposta já foi finalizada com status: " + proposta.getStatusProposta());
+                    .body("Esta proposta já foi finalizada com status: "
+                            + proposta.getStatusProposta());
         }
 
         proposta.setStatusProposta("RECUSADA");
-        solucaoRepository.save(proposta); // O @PreUpdate atualiza o atualizado_em automaticamente
+        solucaoRepository.save(proposta);
 
         return ResponseEntity.ok("Proposta recusada com sucesso.");
     }
 
-    // 3. PATCH: Aceita uma proposta de solução (válido tanto para solicitante quanto para empresa)
     @PatchMapping("/{idProposta}/aceitar")
     @Transactional
     public ResponseEntity<String> aceitarProposta(@PathVariable Integer idProposta) {
         Optional<Proposta_solucao> propostaOpt = solucaoRepository.findById(idProposta);
         if (propostaOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Proposta de solução não encontrada.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Proposta de solução não encontrada.");
         }
 
         Proposta_solucao proposta = propostaOpt.get();
-
-        // Regra 1: Bloqueio de decisão repetida
-        if ("ACEITA".equalsIgnoreCase(proposta.getStatusProposta()) || "RECUSADA".equalsIgnoreCase(proposta.getStatusProposta())) {
+        if (propostaFinalizada(proposta)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body("Esta proposta já foi finalizada com status: " + proposta.getStatusProposta());
+                    .body("Esta proposta já foi finalizada com status: "
+                            + proposta.getStatusProposta());
         }
 
-        // 1. Aceita a proposta escolhida
         proposta.setStatusProposta("ACEITA");
         solucaoRepository.save(proposta);
 
         Manifestacao manifestacao = proposta.getManifestacao();
-
-        // Regra 3: Encerra automaticamente outras propostas concorrentes em aberto da mesma manifestação como RECUSADA
-        List<Proposta_solucao> outrasPropostas = solucaoRepository.findByManifestacao_IdManifestacao(manifestacao.getIdManifestacao());
-        for (Proposta_solucao outra : outrasPropostas) {
-            boolean isOutraProposta = !outra.getIdProposta().equals(proposta.getIdProposta());
-            boolean isEmAberto = "PENDENTE".equalsIgnoreCase(outra.getStatusProposta())
+        for (Proposta_solucao outra : solucaoRepository
+                .findByManifestacao_IdManifestacao(manifestacao.getIdManifestacao())) {
+            boolean outraProposta = !outra.getIdProposta().equals(proposta.getIdProposta());
+            boolean emAberto = "PENDENTE".equalsIgnoreCase(outra.getStatusProposta())
                     || "AGUARDANDO_ACORDO".equalsIgnoreCase(outra.getStatusProposta());
 
-            if (isOutraProposta && isEmAberto) {
+            if (outraProposta && emAberto) {
                 outra.setStatusProposta("RECUSADA");
                 solucaoRepository.save(outra);
             }
         }
 
-        // Regra 2: Efeito cascata na Manifestacao ao aceitar uma proposta
-        manifestacao.setStatus(Boolean.TRUE.equals(proposta.getDesejaAcordo()) ? "EM_ACORDO" : "RESOLVIDA");
+        boolean desejaAcordo = Boolean.TRUE.equals(proposta.getDesejaAcordo());
+        manifestacao.setStatus(desejaAcordo ? "EM_ACORDO" : "RESOLVIDA");
         manifestacaoRepository.save(manifestacao);
 
         return ResponseEntity.ok("Proposta aceita com sucesso.");
+    }
+
+    private Optional<Usuario> usuarioDaSessao(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return Optional.empty();
+        }
+
+        // A sessão da ODRCON identifica o usuário como empresa:usuario.
+        String[] identificacao = authentication.getName().split(":", -1);
+        if (identificacao.length != 2) {
+            return Optional.empty();
+        }
+
+        Integer idEmpresa;
+        Integer idUsuario;
+        try {
+            idEmpresa = Integer.valueOf(identificacao[0]);
+            idUsuario = Integer.valueOf(identificacao[1]);
+        } catch (NumberFormatException exception) {
+            return Optional.empty();
+        }
+
+        return usuarioRepository.findById(idUsuario)
+                .filter(usuario -> idEmpresa.equals(usuario.getIdEmpresa()))
+                .filter(usuario -> Boolean.TRUE.equals(usuario.getAtivo()));
+    }
+
+    private Optional<Manifestacao> buscarManifestacaoDaEmpresa(
+            Integer idManifestacao,
+            Usuario usuario
+    ) {
+        return manifestacaoRepository.findById(idManifestacao)
+                .filter(manifestacao -> usuario.getIdEmpresa().equals(manifestacao.getIdEmpresa()));
+    }
+
+    private boolean ehSolicitante(Usuario usuario, Manifestacao manifestacao) {
+        return Objects.equals(usuario.getIdUsuario(), manifestacao.getIdSolicitante());
+    }
+
+    private boolean ehEquipe(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(permissao -> PERFIS_EQUIPE.contains(permissao.getAuthority()));
+    }
+
+    private String autorExibicao(Proposta_solucao proposta, Manifestacao manifestacao) {
+        boolean origemSolicitante = "SOLICITANTE".equals(proposta.getOrigemProposta());
+        String rotuloPadrao = origemSolicitante
+                ? "Proposta do solicitante"
+                : "Autor não registrado";
+
+        if (proposta.getIdAutor() == null
+                || (origemSolicitante && manifestacao.getIdSolicitante() == null)) {
+            return rotuloPadrao;
+        }
+
+        return usuarioRepository.findById(proposta.getIdAutor())
+                .filter(usuario -> Objects.equals(usuario.getIdEmpresa(), manifestacao.getIdEmpresa()))
+                .map(Usuario::getNomeUsuario)
+                .filter(nome -> !nome.isBlank())
+                .map(nome -> "Proposta de " + nome)
+                .orElse(rotuloPadrao);
+    }
+
+    private boolean propostaFinalizada(Proposta_solucao proposta) {
+        return "ACEITA".equalsIgnoreCase(proposta.getStatusProposta())
+                || "RECUSADA".equalsIgnoreCase(proposta.getStatusProposta());
     }
 }
